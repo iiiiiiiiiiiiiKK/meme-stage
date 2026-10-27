@@ -113,13 +113,24 @@ export const api = {
     return data.asset;
   },
 
-  /** Cloudflare Workers AI (MeloTTS) — returns a real WAV asset stored in R2 */
-  async tts(payload: { text: string; lang: string; speed?: number }): Promise<AssetRecord> {
+  /** Cloudflare Workers AI (MeloTTS) or Microsoft Azure Speech — returns a real audio asset in R2 */
+  async tts(payload: {
+    provider?: "melotts" | "azure";
+    text: string;
+    lang?: string;
+    voice?: string;
+    style?: string;
+    speed?: number;
+  }): Promise<AssetRecord> {
     const data = await request<{ asset: AssetRecord }>("/api/tts", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     return data.asset;
+  },
+
+  async ttsConfig(): Promise<{ melotts: boolean; azure: boolean }> {
+    return request("/api/tts", { cache: "no-store" });
   },
 
   async getPublic(slug: string): Promise<{ project: ServerProject }> {

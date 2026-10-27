@@ -5,6 +5,8 @@ export interface Env {
   BUCKET: R2Bucket;
   ASSETS: Fetcher;
   AI: Ai;
+  AZURE_SPEECH_KEY?: string;
+  AZURE_SPEECH_REGION?: string;
   ENVIRONMENT?: string;
 }
 

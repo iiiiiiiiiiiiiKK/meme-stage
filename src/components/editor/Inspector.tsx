@@ -25,6 +25,7 @@ import { api } from "../../lib/api";
 import { estimateTextHeight } from "../canvas/ElementNode";
 import { canvasPresetFor } from "../../lib/export";
 import { DEFAULT_BUBBLE_PLACEMENT, createText } from "../../lib/defaults";
+import { AZURE_STYLE_LABELS, AZURE_VOICES, findAzureVoice } from "../../lib/azureVoices";
 import type { BubblePlacement, VoiceClip } from "../../lib/types";
 
 const BUBBLE_ANCHORS: { id: BubblePlacement["anchor"]; label: string }[] = [
@@ -306,6 +307,19 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
   const [ttsLang, setTtsLang] = useState("zh");
   const [ttsSpeed, setTtsSpeed] = useState(1);
   const [ttsBusy, setTtsBusy] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<"melotts" | "azure">("melotts");
+  const [azureVoiceId, setAzureVoiceId] = useState("zh-CN-XiaoxiaoNeural");
+  const [azureStyle, setAzureStyle] = useState("general");
+  const [ttsConfig, setTtsConfig] = useState<{ melotts: boolean; azure: boolean } | null>(null);
+
+  useEffect(() => {
+    void api
+      .ttsConfig()
+      .then(setTtsConfig)
+      .catch(() => setTtsConfig({ melotts: true, azure: false }));
+  }, []);
+
+  const azureVoice = findAzureVoice(azureVoiceId);
 
   useEffect(() => {
     void loadAssets();
@@ -357,7 +371,16 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
     }
     setTtsBusy(true);
     try {
-      const asset = await api.tts({ text, lang: ttsLang, speed: ttsSpeed });
+      const asset =
+        ttsProvider === "azure"
+          ? await api.tts({
+              provider: "azure",
+              text,
+              voice: azureVoiceId,
+              style: azureStyle,
+              speed: ttsSpeed,
+            })
+          : await api.tts({ provider: "melotts", text, lang: ttsLang, speed: ttsSpeed });
       const clip: VoiceClip = {
         id: asset.id,
         name: asset.name,
@@ -366,8 +389,9 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         volume: 1,
         line: text,
         source: "tts",
-        lang: ttsLang,
-        ...(ttsSpeed !== 1 ? { rate: ttsSpeed } : {}),
+        lang: ttsProvider === "azure" ? azureVoice?.locale : ttsLang,
+        // Azure bakes the speed into the audio; MeloTTS applies it at playback.
+        ...(ttsProvider === "melotts" && ttsSpeed !== 1 ? { rate: ttsSpeed } : {}),
       };
       appendClip(clip, true);
       toast("语音已生成并添加，正在试听", "success");
@@ -592,33 +616,92 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
               className="min-h-[64px] text-[12px]"
               aria-label="要朗读的文字"
             />
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="语言 / 口音">
-                <Select value={ttsLang} onChange={(e) => setTtsLang(e.target.value)}>
-                  <option value="zh">中文</option>
-                  <option value="en">English</option>
-                  <option value="jp">日本語</option>
-                  <option value="kr">한국어</option>
-                  <option value="fr">Français</option>
-                  <option value="es">Español</option>
-                </Select>
-              </Field>
-              <Field label="语速">
-                <Select value={String(ttsSpeed)} onChange={(e) => setTtsSpeed(Number(e.target.value))}>
-                  <option value="0.8">0.8x 慢</option>
-                  <option value="1">1.0x 正常</option>
-                  <option value="1.2">1.2x 快</option>
-                  <option value="1.5">1.5x 很快</option>
-                </Select>
-              </Field>
-            </div>
+            <Field label="语音引擎">
+              <Select
+                value={ttsProvider}
+                onChange={(e) => setTtsProvider(e.target.value === "azure" ? "azure" : "melotts")}
+              >
+                <option value="melotts">Cloudflare MeloTTS · 免费</option>
+                <option value="azure" disabled={!ttsConfig?.azure}>
+                  Microsoft Azure{ttsConfig?.azure ? " · 官方免费额度" : " · 未配置"}
+                </option>
+              </Select>
+            </Field>
+
+            {ttsProvider === "azure" ? (
+              <>
+                <Field label="微软音色">
+                  <Select
+                    value={azureVoiceId}
+                    onChange={(e) => {
+                      setAzureVoiceId(e.target.value);
+                      setAzureStyle("general");
+                    }}
+                  >
+                    {AZURE_VOICES.map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="情绪 / 风格">
+                    <Select value={azureStyle} onChange={(e) => setAzureStyle(e.target.value)}>
+                      {(azureVoice?.styles ?? ["general"]).map((style) => (
+                        <option key={style} value={style}>
+                          {AZURE_STYLE_LABELS[style] ?? style}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="语速">
+                    <Select value={String(ttsSpeed)} onChange={(e) => setTtsSpeed(Number(e.target.value))}>
+                      <option value="0.8">0.8x 慢</option>
+                      <option value="1">1.0x 正常</option>
+                      <option value="1.2">1.2x 快</option>
+                      <option value="1.5">1.5x 很快</option>
+                    </Select>
+                  </Field>
+                </div>
+                <p className="text-[9px] leading-relaxed text-mute">
+                  微软官方免费 F0：50 万字符/月。需要在 Pages 配置 AZURE_SPEECH_KEY / AZURE_SPEECH_REGION。
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="语言 / 口音">
+                    <Select value={ttsLang} onChange={(e) => setTtsLang(e.target.value)}>
+                      <option value="zh">中文</option>
+                      <option value="en">English</option>
+                      <option value="jp">日本語</option>
+                      <option value="kr">한국어</option>
+                      <option value="fr">Français</option>
+                      <option value="es">Español</option>
+                    </Select>
+                  </Field>
+                  <Field label="语速">
+                    <Select value={String(ttsSpeed)} onChange={(e) => setTtsSpeed(Number(e.target.value))}>
+                      <option value="0.8">0.8x 慢</option>
+                      <option value="1">1.0x 正常</option>
+                      <option value="1.2">1.2x 快</option>
+                      <option value="1.5">1.5x 很快</option>
+                    </Select>
+                  </Field>
+                </div>
+                <p className="text-[9px] leading-relaxed text-mute">
+                  Cloudflare MeloTTS · 6 种语言 · 生成真实 WAV，所有访客听到的一致。
+                </p>
+              </>
+            )}
             <div className="flex gap-1.5">
               <Button
                 size="sm"
                 variant="primary"
                 icon="sparkles"
                 className="flex-1"
-                disabled={ttsBusy || !ttsText.trim()}
+                disabled={ttsBusy || !ttsText.trim() || (ttsProvider === "azure" && !ttsConfig?.azure)}
                 onClick={() => void generateSpeech()}
               >
                 {ttsBusy ? "生成中…" : "生成并添加"}
@@ -628,7 +711,7 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
               </Button>
             </div>
             <p className="text-[9px] leading-relaxed text-mute">
-              Cloudflare MeloTTS · 最多 300 字 · 文字会作为这段语音的台词，生成的是真实 WAV 文件
+              最多 300 字 · 文字会作为这段语音的台词 · 生成的是真实音频文件
             </p>
           </div>
         ) : null}

@@ -1,7 +1,8 @@
 /// <reference types="@cloudflare/workers-types" />
 import type { FunctionContext } from "../_lib/http";
 import { clientIp, editorHash, fail, json, rateLimit } from "../_lib/http";
-import { BUCKET_PREFIX } from "../_lib/files";
+import { BUCKET_PREFIX, sniff } from "../_lib/files";
+import { AZURE_VOICES, buildAzureSsml, findAzureVoice } from "../../src/lib/azureVoices";
 
 const LANGS = ["zh", "en", "jp", "kr", "fr", "es"] as const;
 type Lang = (typeof LANGS)[number];
@@ -40,17 +41,34 @@ export function wavDuration(bytes: Uint8Array): number {
   return 0;
 }
 
+export async function onRequestGet(context: FunctionContext): Promise<Response> {
+  return json({
+    melotts: true,
+    azure: Boolean(context.env.AZURE_SPEECH_KEY && context.env.AZURE_SPEECH_REGION),
+    azureVoices: AZURE_VOICES.map((voice) => ({
+      id: voice.id,
+      label: voice.label,
+      locale: voice.locale,
+      styles: voice.styles,
+    })),
+  });
+}
+
 export async function onRequestPost(context: FunctionContext): Promise<Response> {
   const owner = await editorHash(context.request);
   if (!owner) return fail(401, "unauthorized", "缺少有效的编辑器身份");
   if (!rateLimit(`tts:${clientIp(context.request)}`, 24, 60_000)) {
     return fail(429, "rate_limited", "生成语音太频繁了，请稍后再试");
   }
-  if (!context.env.AI) {
-    return fail(503, "tts_unavailable", "当前环境未启用文字转语音（缺少 Workers AI 绑定）");
-  }
 
-  let body: { text?: unknown; lang?: unknown; speed?: unknown };
+  let body: {
+    provider?: unknown;
+    text?: unknown;
+    lang?: unknown;
+    voice?: unknown;
+    style?: unknown;
+    speed?: unknown;
+  };
   try {
     body = (await context.request.json()) as typeof body;
   } catch {
@@ -63,7 +81,123 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
     .trim();
   if (text.length < 1) return fail(400, "empty_text", "请输入要朗读的文字");
   if (text.length > MAX_CHARS) return fail(413, "too_long", `一次最多 ${MAX_CHARS} 个字`);
-  if (/[\u0000-\u001f]/.test(text)) return fail(400, "bad_text", "文字包含非法字符");
+
+  const provider = String(body.provider ?? "melotts") === "azure" ? "azure" : "melotts";
+  const speed = Math.min(2, Math.max(0.5, Number(body.speed) || 1));
+
+  if (provider === "azure") {
+    const key = context.env.AZURE_SPEECH_KEY;
+    const region = context.env.AZURE_SPEECH_REGION;
+    if (!key || !region) {
+      return fail(
+        503,
+        "azure_not_configured",
+        "微软语音尚未配置（需要 AZURE_SPEECH_KEY / AZURE_SPEECH_REGION）",
+      );
+    }
+    if (!/^[a-z0-9]{2,20}$/.test(region)) {
+      return fail(500, "azure_region", "微软语音区域配置不正确");
+    }
+
+    const voiceId = String(body.voice ?? "zh-CN-XiaoxiaoNeural");
+    const voice = findAzureVoice(voiceId);
+    if (!voice) return fail(400, "bad_voice", "不支持的微软音色");
+    const style = voice.styles.includes(String(body.style ?? "general"))
+      ? String(body.style ?? "general")
+      : "general";
+
+    let ssml: string;
+    try {
+      ssml = buildAzureSsml({ text, voiceId, style, rate: speed });
+    } catch {
+      return fail(400, "bad_ssml", "语音参数不正确");
+    }
+
+    let audio: Uint8Array;
+    try {
+      const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": key,
+          "Content-Type": "application/ssml+xml",
+          "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+          "User-Agent": "meme-stage",
+        },
+        body: ssml,
+      });
+      if (!res.ok) {
+        console.error("azure tts failed", res.status, (await res.text()).slice(0, 300));
+        return fail(
+          res.status === 401 || res.status === 403 ? 502 : 502,
+          "azure_failed",
+          res.status === 401 || res.status === 403
+            ? "微软语音鉴权失败，请检查 Azure key / region"
+            : `微软语音生成失败（${res.status}）`,
+        );
+      }
+      const buffer = await res.arrayBuffer();
+      audio = new Uint8Array(buffer);
+    } catch (error) {
+      console.error("azure tts request failed", error);
+      return fail(502, "azure_failed", "无法连接微软语音服务");
+    }
+
+    if (audio.byteLength > 6 * 1024 * 1024) {
+      return fail(413, "too_large", "生成的音频过大，请缩短文字");
+    }
+    const sniffed = sniff(audio);
+    if (!sniffed || sniffed.kind !== "audio") {
+      return fail(502, "azure_format", "微软语音返回了无法识别的音频");
+    }
+    // CBR output is 48 kbps → bytes * 8 / 48000 seconds
+    const duration = Math.max(0.2, (audio.byteLength * 8) / 48000);
+
+    const id = crypto.randomUUID();
+    const ext = sniffed.mime === "audio/mpeg" ? "mp3" : sniffed.ext;
+    const objectKey = `${BUCKET_PREFIX}tts/${id}.${ext}`;
+    const name = `微软语音 · ${text.slice(0, 18)}${text.length > 18 ? "…" : ""}`;
+    try {
+      await context.env.BUCKET.put(objectKey, audio, {
+        httpMetadata: { contentType: sniffed.mime, cacheControl: "public, max-age=31536000, immutable" },
+      });
+      await context.env.DB.prepare(
+        `INSERT INTO assets (id, owner_hash, kind, object_key, mime, size, name, width, height, duration, created_at)
+         VALUES (?, ?, 'audio', ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      )
+        .bind(id, owner, objectKey, sniffed.mime, audio.byteLength, name, Number(duration.toFixed(2)), Date.now())
+        .run();
+    } catch (error) {
+      console.error("azure tts store failed", error);
+      return fail(500, "internal", "语音保存失败，请稍后重试");
+    }
+
+    return json(
+      {
+        asset: {
+          id,
+          kind: "audio",
+          url: `/api/files/${id}`,
+          mime: sniffed.mime,
+          size: audio.byteLength,
+          name,
+          width: null,
+          height: null,
+          duration: Number(duration.toFixed(2)),
+        },
+        text,
+        provider,
+        voice: voiceId,
+        style,
+        speed,
+      },
+      201,
+    );
+  }
+
+  // ------------------------------------------------------------ MeloTTS path
+  if (!context.env.AI) {
+    return fail(503, "tts_unavailable", "当前环境未启用文字转语音（缺少 Workers AI 绑定）");
+  }
 
   const rawLang = String(body.lang ?? "zh").toLowerCase();
   if (!LANGS.includes(rawLang as Lang)) {
@@ -99,13 +233,10 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
   if (duration <= 0) return fail(502, "tts_format", "语音生成失败（音频格式异常）");
 
   const id = crypto.randomUUID();
-  const key = `${BUCKET_PREFIX}tts/${id}.wav`;
-  const now = Date.now();
+  const objectKey = `${BUCKET_PREFIX}tts/${id}.wav`;
   const name = `文字语音 · ${text.slice(0, 18)}${text.length > 18 ? "…" : ""}`;
-  const speed = Math.min(2, Math.max(0.5, Number(body.speed) || 1));
-
   try {
-    await context.env.BUCKET.put(key, bytes, {
+    await context.env.BUCKET.put(objectKey, bytes, {
       httpMetadata: {
         contentType: "audio/wav",
         cacheControl: "public, max-age=31536000, immutable",
@@ -115,7 +246,7 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
       `INSERT INTO assets (id, owner_hash, kind, object_key, mime, size, name, width, height, duration, created_at)
        VALUES (?, ?, 'audio', ?, 'audio/wav', ?, ?, NULL, NULL, ?, ?)`,
     )
-      .bind(id, owner, key, bytes.byteLength, name, Number(duration.toFixed(2)), now)
+      .bind(id, owner, objectKey, bytes.byteLength, name, Number(duration.toFixed(2)), Date.now())
       .run();
   } catch (error) {
     console.error("tts store failed", error);
@@ -136,6 +267,7 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
         duration: Number(duration.toFixed(2)),
       },
       text,
+      provider,
       lang,
       speed,
     },

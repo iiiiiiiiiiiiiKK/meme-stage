@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-49%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-56%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -43,7 +43,6 @@
 | 文字生成语音 · 选语言和语速 |
 | --- |
 | ![文字生成语音](docs/screenshots/tts.png) |
-
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
 | ![手机作品页](docs/screenshots/mobile-published.png) | ![手机编辑器](docs/screenshots/mobile-editor.png) |
@@ -77,6 +76,7 @@
 
 - 每个人物最多 **20 条语音**，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
 - **文字生成语音**：输入最多 300 字，选择语言/口音（中文 / English / 日本語 / 한국어 / Français / Español）和语速（0.8x–1.5x），由 Cloudflare Workers AI（MeloTTS）生成真实 WAV 并存入 R2。
+- **可选微软官方音色**：配置 Azure Speech 的 key 后，可切换 Microsoft Azure 引擎，使用晓晓 / 云希 / 云健 / 晓伊等神经网络音色，并支持「开心 / 温柔 / 难过 / 生气 / 新闻播报 / 解说」等情绪风格。key 只存在服务端，不会下发到浏览器。
 - 点击人物可按顺序**轮换**或**随机**换语音；每条语音可以带自己的台词和音量。
 - 试听、批量添加、删除、从素材库追加。
 - 台词输入 + 6 种气泡预设（漫画 / 纯色 / 思考 / 字幕 / 大字 / 自定义）。
@@ -262,7 +262,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（49 个，全部通过）
+### 单元测试（56 个，全部通过）
 
 ```bash
 npm test
@@ -307,6 +307,9 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 文字生成语音 API | ✅ 201 返回 196 KB / 2.22s WAV；无鉴权 401、非法语言 400、301 字 413 |
 | 编辑器文字生成语音 | ✅ 生成并添加第 2 条语音，带 TTS 标记，语速 1.2x |
 | 发布后 TTS 播放 | ✅ 第二次点击播放生成音频，`playbackRate = 1.2` |
+| 语音引擎配置接口 | ✅ 返回 MeloTTS 可用、Azure 未配置、音色目录 |
+| Azure 未配置时 | ✅ 明确返回 503 `azure_not_configured`，默认引擎不受影响 |
+| Azure SSML 构建 | ✅ 音色 / 情绪风格 / 语速 / XML 转义 / 非法音色 单元测试通过 |
 | 旧版单语音作品迁移 | ✅ 旧的 `voice` 字段自动迁移为 `voices[]`，发布页仍可播放 |
 | 预览里拖动气泡 | ✅ 拖动 140×-90 px → 世界坐标 (161,-103)，重载后仍保持 |
 | 发布后的气泡位置 | ✅ 访客页气泡位置与编辑器偏移一致（实测误差 0 px） |
@@ -348,6 +351,22 @@ Pages Functions 的 `/_redirects` 已处理 `/editor/*`、`/library` 的 SPA 回
 
 文字生成语音使用 `wrangler.jsonc` 里的 Workers AI 绑定（`"ai": { "binding": "AI" }`），账号需要启用 Workers AI；如果绑定不可用，接口会返回 503，导入音频的功能不受影响。
 
+### 启用 Microsoft Azure 语音（可选）
+
+微软官方语音能力有免费层（F0：每月 50 万神经字符），但需要 Azure 订阅里的 Speech key：
+
+1. Azure Portal → 创建 **Speech** 资源 → 定价层选 **Free F0** → 记下 `KEY 1` 和 `Region`（如 `eastasia`）。
+2. 在项目目录执行：
+
+```bash
+npx wrangler pages secret put AZURE_SPEECH_KEY --project-name=meme-stage
+npx wrangler pages secret put AZURE_SPEECH_REGION --project-name=meme-stage
+```
+
+3. 重新打开编辑器 → 文字生成语音 → 语音引擎选「Microsoft Azure」，即可选音色、情绪风格和语速。
+
+> 为什么没有用 Edge 浏览器「朗读」的免 key 接口：它现在需要 `Sec-MS-GEC` DRM 签名和私有哈希算法，实测合成请求返回 **403**；这是非官方接口，随时可能失效，也不适合作为公开产品的依赖。Windows 自带的 SAPI 语音只能在这台 Windows 机器上运行，无法服务网页访客。所以微软音色走官方 Azure Speech，免费额度内可用，key 只保存在服务端 Secret。
+
 ### 为什么不是 GitHub Pages？
 
 GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和 R2。本项目的「保存 / 发布 / 上传 / 私有访问控制 / 动态 OG 注入」都需要服务端，所以线上版本放在 Cloudflare Pages。GitHub 仓库仍然作为源码主站和 Issue 入口。
@@ -366,6 +385,7 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 | D1 | 5 GB 存储、500 万行读/天、10 万行写/天 | 1.4s 防抖保存；单作品 JSON ≤ 2 MB；300 元素上限 |
 | R2 | 10 GB 存储、100 万 Class A/月、1000 万 Class B/月 | 图片先压缩；缩略图独立；单文件 8/12 MB 上限 |
 | Workers AI | 每天 10,000 Neurons 免费额度 | 文字语音每段 ≤ 300 字；接口限流 24 次/分钟；MeloTTS 标价约 $0.000205/音频分钟 |
+| Azure Speech（可选） | F0 免费层：50 万神经字符/月 | 需要 Azure 订阅与 key；超出后按 Azure 计费，未配置时该引擎隐藏 |
 
 **成本提示**：如果作品量或访问量明显增长，D1 行写入和 R2 存储会先触顶。扩展方向：作品 JSON 压到 R2、D1 只存索引；或迁移到 Durable Objects / 自建 Postgres。
 
@@ -391,7 +411,8 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 ## 已知限制
 
 - **不做 AI 抠图**。建议上传透明背景 PNG；普通照片会保留原背景。
-- **文字生成语音只支持 6 种语言**（zh/en/jp/kr/fr/es），MeloTTS 不提供情绪、性别或多音色选择；目前用语言 + 语速做风格区分，生成的是 WAV（体积比 MP3 大），单段最多 300 字。
+- **文字生成语音的默认引擎只支持 6 种语言**（zh/en/jp/kr/fr/es），MeloTTS 不提供情绪或多音色选择；需要微软音色/情绪风格时配置 Azure Speech（F0 免费层）。
+- Edge 浏览器的免 key「朗读」接口有 DRM 签名（实测 403），非官方且不稳定，没有接入；Windows SAPI 只能在本机运行，也不能作为线上服务。
 - **没有账号系统**。所有权绑定当前浏览器生成的 key；换设备/清缓存无法编辑旧作品。
 - **社交平台只显示静态封面**。X/微信里的链接卡片是图片 + 标题，真正互动要点进链接。
 - **多人协作未实现**。同一作品多窗口编辑采用「最后可见版本优先」，不做实时合并。
@@ -434,7 +455,7 @@ npm run build && npm test
 
 - True infinite canvas: pan, wheel/pinch zoom, marquee + shift multi-select, group drag, rotate/resize, snapping guides, layers, 60-step undo/redo, keyboard shortcuts.
 - Batch import of up to 300 images with client-side WebP compression and six auto-layout modes (no stacking).
-- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), plus **text-to-speech via Workers AI MeloTTS** (zh/en/jp/kr/fr/es, 0.8–1.5× speed, real WAV stored in R2), draggable speech bubbles with anchor + offset controls and one-click “put this line on the canvas” text layers.
+- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), **text-to-speech via Workers AI MeloTTS** (zh/en/jp/kr/fr/es, 0.8–1.5× speed, real WAV in R2) and optional **Microsoft Azure Speech** neural voices with emotion styles (requires `AZURE_SPEECH_KEY`), draggable speech bubbles with anchor + offset controls and one-click “put this line on the canvas” text layers.
 - Visual interaction editor: trigger → ordered/parallel actions → next event, with loop protection. The preview runs the exact same engine as the published page.
 - Autosave with real status, offline drafts, optimistic revisions, conflict recovery.
 - Publish to `/p/:slug` with an auto-generated 1200×630 Open Graph cover; PNG and JSON export; remix.
