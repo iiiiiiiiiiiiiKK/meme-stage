@@ -43,7 +43,7 @@ export interface VoiceClip {
   /** playback rate (0.5–2); text-to-speech uses it as the "speed" style */
   rate?: number;
   /** where the clip came from */
-  source?: "upload" | "tts" | "device";
+  source?: "upload" | "tts" | "device" | "record";
   /** TTS language code (zh/en/jp/kr/fr/es) or BCP-47 for device voices */
   lang?: string;
   /** device-speech text (source === "device") */

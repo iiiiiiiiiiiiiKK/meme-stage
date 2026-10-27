@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-60%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-65%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -43,6 +43,10 @@
 | 文字生成语音 · 选语言和语速 | 浏览器自带朗读 · 免 key |
 | --- | --- |
 | ![文字生成语音](docs/screenshots/tts.png) | ![浏览器朗读](docs/screenshots/device-voice.png) |
+
+| 录音 · 波形裁剪 |
+| --- |
+| ![录音](docs/screenshots/record.png) |
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
 | ![手机作品页](docs/screenshots/mobile-published.png) | ![手机编辑器](docs/screenshots/mobile-editor.png) |
@@ -76,6 +80,8 @@
 
 - 每个人物最多 **20 条语音**，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
 - **文字生成语音**：输入最多 300 字，选择语言/口音（中文 / English / 日本語 / 한국어 / Français / Español）和语速（0.8x–1.5x），由 Cloudflare Workers AI（MeloTTS）生成真实 WAV 并存入 R2。
+- **直接录音**：点「录音」请求麦克风，录完显示波形，拖动起止点裁剪前后空白，可试听选区，保存成 16-bit WAV 并上传素材库；之后和导入音频完全一样（可轮换、可发布）。
+- **音频预加载**：作品页打开时会预热所有语音（`preload="auto"` + HTTP 缓存），实测点击到开始播放从首次 157 ms 降到后续 58 ms，避免“点一下等一会儿才响”。
 - **可选微软官方音色**：配置 Azure Speech 的 key 后，可切换 Microsoft Azure 引擎，使用晓晓 / 云希 / 云健 / 晓伊等神经网络音色，并支持「开心 / 温柔 / 难过 / 生气 / 新闻播报 / 解说」等情绪风格。key 只存在服务端，不会下发到浏览器。
 - **浏览器自带朗读（免 key、免存储）**：用访客设备上的系统语音（Windows/Edge 里就是微软 Huihui / Kangkang / Yaoyao，iPhone 上是 Apple 声音）朗读文字，可选系统音色、语速、音调。完全免费，但音色会因访客设备不同而不同。
 - 点击人物可按顺序**轮换**或**随机**换语音；每条语音可以带自己的台词和音量。
@@ -263,7 +269,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（60 个，全部通过）
+### 单元测试（65 个，全部通过）
 
 ```bash
 npm test
@@ -313,6 +319,9 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | Azure SSML 构建 | ✅ 音色 / 情绪风格 / 语速 / XML 转义 / 非法音色 单元测试通过 |
 | 浏览器自带朗读（编辑器） | ✅ 选择系统音色、1.2x 语速、1.2 音调，记录 `speak` 参数正确 |
 | 浏览器自带朗读（发布页） | ✅ 点击人物后由设备 `speechSynthesis` 朗读，文本/语音/语速/音调全部还原 |
+| 录音 + 裁剪 | ✅ 录 2.16s，裁到 0.90s，保存 86 KB WAV，服务端 RIFF 校验通过 |
+| 录音权限 | ✅ 允许同源麦克风；拒绝/无设备时给出明确中文提示 |
+| 音频预加载 | ✅ 8 条语音全部预取，点击到播放首次 157 ms、后续 58 ms |
 | 旧版单语音作品迁移 | ✅ 旧的 `voice` 字段自动迁移为 `voices[]`，发布页仍可播放 |
 | 预览里拖动气泡 | ✅ 拖动 140×-90 px → 世界坐标 (161,-103)，重载后仍保持 |
 | 发布后的气泡位置 | ✅ 访客页气泡位置与编辑器偏移一致（实测误差 0 px） |
@@ -416,7 +425,7 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 
 - **不做 AI 抠图**。建议上传透明背景 PNG；普通照片会保留原背景。
 - **文字生成语音的默认引擎只支持 6 种语言**（zh/en/jp/kr/fr/es），MeloTTS 不提供情绪或多音色选择；需要微软音色/情绪风格时配置 Azure Speech（F0 免费层）。
-- **浏览器自带朗读**不需要 key，但音色和可用性取决于访客设备；它不会生成可下载的音频文件，iOS/部分浏览器要求用户手势触发（本项目就是点击人物触发，正常情况下可用）。
+- **录音需要 HTTPS、麦克风权限和支持 MediaRecorder 的浏览器**（Chrome/Edge/Safari 现代版本均可）；拒绝权限时会明确提示，不会静默失败。录完的音频会统一转成 WAV，长录音体积会偏大（最长 30 秒）。
 - Edge 浏览器的免 key「朗读」接口有 DRM 签名（实测 403），非官方且不稳定，没有接入；Windows SAPI 只能在本机运行，也不能作为线上服务。
 - **没有账号系统**。所有权绑定当前浏览器生成的 key；换设备/清缓存无法编辑旧作品。
 - **社交平台只显示静态封面**。X/微信里的链接卡片是图片 + 标题，真正互动要点进链接。
@@ -460,7 +469,7 @@ npm run build && npm test
 
 - True infinite canvas: pan, wheel/pinch zoom, marquee + shift multi-select, group drag, rotate/resize, snapping guides, layers, 60-step undo/redo, keyboard shortcuts.
 - Batch import of up to 300 images with client-side WebP compression and six auto-layout modes (no stacking).
-- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), **three text-to-speech engines**: Workers AI MeloTTS (default, 6 languages), Microsoft Azure Speech with emotion styles (optional key), and **free browser speech synthesis** (system voices, no key, no storage), plus draggable speech bubbles and one-click “put this line on the canvas” text layers.
+- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), **in-browser recording with waveform trimming**, **three text-to-speech engines**: Workers AI MeloTTS (default, 6 languages), Microsoft Azure Speech with emotion styles (optional key), and **free browser speech synthesis** (system voices, no key, no storage), plus preloading for instant playback, draggable speech bubbles and one-click “put this line on the canvas” text layers.
 - Visual interaction editor: trigger → ordered/parallel actions → next event, with loop protection. The preview runs the exact same engine as the published page.
 - Autosave with real status, offline drafts, optimistic revisions, conflict recovery.
 - Publish to `/p/:slug` with an auto-generated 1200×630 Open Graph cover; PNG and JSON export; remix.

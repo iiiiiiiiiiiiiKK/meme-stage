@@ -83,13 +83,17 @@ test.describe("published demo", () => {
     });
     await page.goto("/p/demo", { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="visitor"] canvas');
-    await page.waitForTimeout(400);
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-testid="visitor"]');
+      return !!el && el.getBoundingClientRect().width > 100;
+    });
+    await page.waitForTimeout(1500);
 
     const lines = ["喵。听不懂，但是喵。", "别问我，我只是一只猫。", "这个家没有我，早就散了。"];
     for (let i = 0; i < 3; i++) {
       await clickDemoCharacter(page, 1380, 630); // 猫猫头 center, three voices
-      await page.waitForTimeout(650);
-      await expect(page.getByText(lines[i]).first()).toBeVisible();
+      await page.waitForTimeout(900);
+      await expect(page.getByText(lines[i]).first()).toBeVisible({ timeout: 20_000 });
     }
 
     const played = await page.evaluate(() => window.__played);

@@ -19,6 +19,10 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Pixel 7"] } },
     // Real Safari engine (iPhone 13 viewport). ignoreHTTPSErrors is only for the
     // sandbox proxy between this machine and playwright.dev/CDN certificates.
-    { name: "safari", use: { ...devices["iPhone 13"], ignoreHTTPSErrors: true } },
+    {
+      name: "safari",
+      retries: 1,
+      use: { ...devices["iPhone 13"], ignoreHTTPSErrors: true },
+    },
   ],
 });

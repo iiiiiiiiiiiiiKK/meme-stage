@@ -230,6 +230,24 @@ describe("project schema", () => {
     });
   });
 
+  it("keeps recorded voice clips tagged as record", () => {
+    const project = baseProject();
+    project.elements[0].character!.voices = [
+      {
+        id: "rec1",
+        name: "录音",
+        url: "/api/files/rec",
+        duration: 1.4,
+        volume: 1,
+        source: "record",
+        line: "我录的",
+      },
+    ];
+    const clip = normalizeProject(project).elements[0].character!.voices[0];
+    expect(clip.source).toBe("record");
+    expect(clip.url).toBe("/api/files/rec");
+  });
+
   it("serialises to a stable JSON document", () => {
     const project = baseProject();
     const { json, project: normalized } = normalizeForStorage(project);

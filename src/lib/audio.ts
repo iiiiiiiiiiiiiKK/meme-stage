@@ -44,9 +44,11 @@ export class AudioEngine {
       if (!url || this.elements.has(url)) continue;
       try {
         const audio = new Audio();
-        audio.preload = "metadata";
+        // voices are short: fully buffer them so the first tap starts instantly
+        audio.preload = "auto";
         audio.src = url;
         this.elements.set(url, audio);
+        audio.load();
       } catch {
         // ignore — playback will report a real error later
       }
@@ -87,11 +89,20 @@ export class AudioEngine {
       audio.preload = "auto";
       this.elements.set(clip.url, audio);
     }
-    audio.src = clip.url;
     audio.volume = Math.max(0, Math.min(1, clip.volume ?? 1));
     audio.playbackRate = Math.max(0.5, Math.min(2, clip.rate ?? 1));
     audio.preservesPitch = true;
     (audio as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = true;
+    // Re-assigning the same src would throw away the buffered preload.
+    const targetSrc = new URL(clip.url, window.location.href).href;
+    if (audio.src !== targetSrc) {
+      audio.src = targetSrc;
+    }
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // ignore
+    }
 
     return new Promise<void>((resolve) => {
       let settled = false;

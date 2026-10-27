@@ -122,7 +122,15 @@ function element(raw: unknown, index: number): CanvasElement {
       if (!raw || typeof raw !== "object" || voices.length >= 20) return;
       const v = raw as Record<string, unknown>;
       const source =
-        v.source === "device" ? "device" : v.source === "tts" ? "tts" : v.source === "upload" ? "upload" : undefined;
+        v.source === "device"
+          ? "device"
+          : v.source === "tts"
+            ? "tts"
+            : v.source === "record"
+              ? "record"
+              : v.source === "upload"
+                ? "upload"
+                : undefined;
       const text = str(v.text, LIMITS.line);
       const voiceUrl = safeUrl(v.url);
       // device voices are synthesized on the visitor's browser and need no file

@@ -17,6 +17,7 @@ import {
   toast,
 } from "../ui";
 import { BubbleStyleEditor } from "./BubbleStyleEditor";
+import { RecordDialog } from "./RecordDialog";
 import { CANVAS_PRESETS } from "../../lib/layout";
 import type { CanvasElement, ProjectData } from "../../lib/types";
 import { audioDuration, loadImage } from "../../lib/image";
@@ -320,6 +321,7 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
   const [deviceVoices, setDeviceVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [deviceVoiceURI, setDeviceVoiceURI] = useState("");
   const [devicePitch, setDevicePitch] = useState(1);
+  const [recordOpen, setRecordOpen] = useState(false);
 
   useEffect(() => {
     void api
@@ -561,6 +563,10 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
                     <span className="shrink-0 rounded bg-neon/15 px-1 text-[8px] font-semibold text-neon">
                       设备
                     </span>
+                  ) : clip.source === "record" ? (
+                    <span className="shrink-0 rounded bg-hot/20 px-1 text-[8px] font-semibold text-hot">
+                      录音
+                    </span>
                   ) : null}
                   {clip.rate && clip.rate !== 1 ? (
                     <span className="shrink-0 text-[8px] text-mute">{clip.rate}x</span>
@@ -643,16 +649,29 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
           </div>
         )}
 
-        <Button
-          size="sm"
-          variant="outline"
-          icon="upload"
-          className="w-full"
-          disabled={binding || character.voices.length >= 20}
-          onClick={() => voiceInput.current?.click()}
-        >
-          {binding ? "上传中…" : character.voices.length >= 20 ? "最多 20 条语音" : "添加语音（可多选）"}
-        </Button>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            icon="upload"
+            disabled={binding || character.voices.length >= 20}
+            onClick={() => voiceInput.current?.click()}
+          >
+            {binding ? "上传中…" : "添加音频"}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="music"
+            disabled={character.voices.length >= 20}
+            onClick={() => setRecordOpen(true)}
+          >
+            录音
+          </Button>
+        </div>
+        {character.voices.length >= 20 ? (
+          <p className="text-[9px] text-mute">每个人物最多 20 条语音</p>
+        ) : null}
 
         <Button
           size="sm"
@@ -973,8 +992,7 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         </p>
       </Section>
 
-      <Section title="气泡样式" defaultOpen={false}>
-        <BubbleStyleEditor
+      <Section title="气泡样式" defaultOpen={false}>        <BubbleStyleEditor
           style={character.bubble}
           onChange={(patch) =>
             updateCharacter(
@@ -1097,6 +1115,34 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
           画幅 {project.width}×{project.height} · 拖动人物可自由摆放，按住 Shift 多选，Alt 临时关闭吸附。
         </div>
       </Section>
+
+      {recordOpen ? (
+        <RecordDialog
+          onClose={() => setRecordOpen(false)}
+          onSave={async ({ blob, duration, line }) => {
+            const stamp = new Date().toLocaleTimeString("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            const name = `录音 · ${stamp}`;
+            const file = new File([blob], `${name}.wav`, { type: "audio/wav" });
+            const asset = await api.uploadAsset(file, { kind: "audio", name, duration });
+            appendClip(
+              {
+                id: asset.id,
+                name,
+                url: asset.url,
+                duration: asset.duration ?? duration,
+                volume: 1,
+                line,
+                source: "record",
+              },
+              true,
+            );
+            toast("录音已保存到人物", "success");
+          }}
+        />
+      ) : null}
     </PanelShell>
   );
 }

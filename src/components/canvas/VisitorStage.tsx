@@ -189,6 +189,17 @@ export function VisitorStage({
     };
   }, [onError]);
 
+  // warm every non-device clip so the first tap does not wait for the network
+  useEffect(() => {
+    const urls = new Set<string>();
+    for (const el of project.elements) {
+      for (const clip of el.character?.voices ?? []) {
+        if (clip.source !== "device" && clip.url) urls.add(clip.url);
+      }
+    }
+    audioEngine.preload(Array.from(urls));
+  }, [project]);
+
   const trigger = useCallback(
     (id: string) => {
       const el = projectRef.current.elements.find((item) => item.id === id);
