@@ -375,7 +375,11 @@ export function Modal({
           <IconButton icon="close" label="关闭" onClick={onClose} />
         </div>
         <div className="scroll-thin flex-1 overflow-y-auto p-4">{children}</div>
-        {footer ? <div className="border-t border-line bg-ink px-4 py-3">{footer}</div> : null}
+        {footer ? (
+          <div className="border-t border-line bg-ink px-4 py-3 pb-[calc(0.75rem+var(--safe-bottom))]">
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,
