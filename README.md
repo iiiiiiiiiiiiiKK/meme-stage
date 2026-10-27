@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-65%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-66%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -81,6 +81,7 @@
 - 每个人物最多 **20 条语音**，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
 - **文字生成语音**：输入最多 300 字，选择语言/口音（中文 / English / 日本語 / 한국어 / Français / Español）和语速（0.8x–1.5x），由 Cloudflare Workers AI（MeloTTS）生成真实 WAV 并存入 R2。
 - **直接录音**：点「录音」请求麦克风，录完显示波形，拖动起止点裁剪前后空白，可试听选区，保存成 16-bit WAV 并上传素材库；之后和导入音频完全一样（可轮换、可发布）。
+- 录音保存前会**混成单声道并重采样到 24 kHz**（30 秒约 1.4 MB），避免高采样率设备产生超大文件；上传失败时可以在弹窗里直接下载 WAV 再手动导入。
 - **音频预加载**：作品页打开时会预热所有语音（`preload="auto"` + HTTP 缓存），实测点击到开始播放从首次 157 ms 降到后续 58 ms，避免“点一下等一会儿才响”。
 - **可选微软官方音色**：配置 Azure Speech 的 key 后，可切换 Microsoft Azure 引擎，使用晓晓 / 云希 / 云健 / 晓伊等神经网络音色，并支持「开心 / 温柔 / 难过 / 生气 / 新闻播报 / 解说」等情绪风格。key 只存在服务端，不会下发到浏览器。
 - **浏览器自带朗读（免 key、免存储）**：用访客设备上的系统语音（Windows/Edge 里就是微软 Huihui / Kangkang / Yaoyao，iPhone 上是 Apple 声音）朗读文字，可选系统音色、语速、音调。完全免费，但音色会因访客设备不同而不同。
@@ -269,7 +270,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（65 个，全部通过）
+### 单元测试（66 个，全部通过）
 
 ```bash
 npm test

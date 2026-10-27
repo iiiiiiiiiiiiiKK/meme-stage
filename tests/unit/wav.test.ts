@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeWavFromChannels, waveformPeaks } from "../../src/lib/wav";
+import { audioBufferToWav, encodeWavFromChannels, waveformPeaks } from "../../src/lib/wav";
 
 function sine(seconds: number, sampleRate: number, freq = 440): Float32Array {
   const samples = Math.floor(seconds * sampleRate);
@@ -45,6 +45,25 @@ describe("wav encoder", () => {
     expect(view.getInt16(44, true)).toBe(32767);
     expect(view.getInt16(46, true)).toBe(0);
     expect(view.getInt16(48, true)).toBe(-32768);
+  });
+
+  it("downmixes and resamples recordings to small mono files", () => {
+    const sampleRate = 48000;
+    const seconds = 2;
+    const left = sine(seconds, sampleRate);
+    const right = sine(seconds, sampleRate);
+    const buffer = {
+      numberOfChannels: 2,
+      sampleRate,
+      duration: seconds,
+      length: left.length,
+      getChannelData: (ch: number) => (ch === 0 ? left : right),
+    } as unknown as AudioBuffer;
+    const result = audioBufferToWav(buffer, 0, 1, 24000);
+    expect(result.sampleRate).toBe(24000);
+    expect(result.duration).toBeCloseTo(1, 2);
+    // 24000 mono 16-bit ≈ 48 KB instead of ~384 KB stereo 48k
+    expect(result.blob.size).toBe(44 + 24000 * 2);
   });
 
   it("produces a waveform with the requested bucket count", () => {

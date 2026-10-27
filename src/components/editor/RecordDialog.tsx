@@ -21,6 +21,7 @@ export function RecordDialog({
   const [end, setEnd] = useState(0);
   const [line, setLine] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -126,6 +127,11 @@ export function RecordDialog({
       setBuffer(decoded);
       setStart(0);
       setEnd(Math.min(decoded.duration, MAX_SECONDS));
+      setError(
+        decoded.duration > MAX_SECONDS
+          ? `录音超过 ${MAX_SECONDS} 秒，只会保留前 ${MAX_SECONDS} 秒，可以继续裁剪`
+          : null,
+      );
       setPhase("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "录音解析失败");
@@ -135,23 +141,33 @@ export function RecordDialog({
     }
   };
 
-  const preview = () => {
+  const preview = async () => {
     if (!buffer) return;
     try {
       previewRef.current?.stop();
-      const context = contextRef.current ?? new AudioContext();
-      contextRef.current = context;
-      void context.resume();
+      let context = contextRef.current;
+      if (!context || context.state === "closed") {
+        context = new AudioContext();
+        contextRef.current = context;
+      }
+      await context.resume();
+      if (context.state !== "running") {
+        setError("浏览器没有允许播放音频，请再点一次「试听选区」");
+        return;
+      }
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.connect(context.destination);
       source.start(0, start, Math.max(0.05, end - start));
       previewRef.current = source;
+      setPreviewing(true);
       source.onended = () => {
         if (previewRef.current === source) previewRef.current = null;
+        setPreviewing(false);
       };
     } catch {
-      toast("试听失败，请重试", "error");
+      setPreviewing(false);
+      setError("试听失败：请检查系统音量，或再点一次");
     }
   };
 
@@ -188,7 +204,29 @@ export function RecordDialog({
       onClose();
     } catch (err) {
       setPhase("ready");
+      setError(
+        err instanceof Error
+          ? `保存失败：${err.message}`
+          : "保存失败，请检查网络后重试（录音仍保留在这个窗口里）",
+      );
       toast(err instanceof Error ? err.message : "保存录音失败", "error");
+    }
+  };
+
+  const download = () => {
+    if (!buffer) return;
+    try {
+      const wav = audioBufferToWav(buffer, start, end);
+      const url = URL.createObjectURL(wav.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `meme-stage-recording-${Date.now()}.wav`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch {
+      toast("下载失败，请重试", "error");
     }
   };
 
@@ -213,8 +251,11 @@ export function RecordDialog({
                 <Button size="sm" variant="ghost" onClick={() => { setBuffer(null); setPhase("idle"); }}>
                   重录
                 </Button>
-                <Button size="sm" variant="secondary" icon="play" onClick={preview}>
-                  试听选区
+                <Button size="sm" variant="secondary" icon="play" onClick={() => void preview()}>
+                  {previewing ? "试听中…" : "试听选区"}
+                </Button>
+                <Button size="sm" variant="ghost" icon="download" onClick={download}>
+                  下载 WAV
                 </Button>
                 <Button size="sm" variant="primary" icon="check" onClick={() => void save()}>
                   保存到人物

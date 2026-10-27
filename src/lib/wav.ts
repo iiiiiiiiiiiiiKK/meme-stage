@@ -59,12 +59,33 @@ export function encodeWavFromChannels(
   };
 }
 
-export function audioBufferToWav(buffer: AudioBuffer, startSec: number, endSec: number): WavResult {
+export function audioBufferToWav(
+  buffer: AudioBuffer,
+  startSec: number,
+  endSec: number,
+  targetRate = 24000,
+): WavResult {
+  const duration = Math.max(0.05, Math.min(endSec, buffer.duration) - Math.max(0, startSec));
+  const frames = Math.max(1, Math.floor(duration * targetRate));
+  const mono = new Float32Array(frames);
   const channels: Float32Array[] = [];
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    channels.push(buffer.getChannelData(ch));
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) channels.push(buffer.getChannelData(ch));
+  const ratio = buffer.sampleRate / targetRate;
+  const startFrame = Math.max(0, startSec) * buffer.sampleRate;
+
+  for (let i = 0; i < frames; i++) {
+    const position = startFrame + i * ratio;
+    const index = Math.floor(position);
+    const frac = position - index;
+    let sum = 0;
+    for (const channel of channels) {
+      const a = channel[index] ?? 0;
+      const b = channel[index + 1] ?? a;
+      sum += a + (b - a) * frac;
+    }
+    mono[i] = sum / Math.max(1, channels.length);
   }
-  return encodeWavFromChannels(channels, buffer.sampleRate, startSec, endSec);
+  return encodeWavFromChannels([mono], targetRate, 0, duration);
 }
 
 /** peaks for the trim waveform, sampled into `buckets` columns */
