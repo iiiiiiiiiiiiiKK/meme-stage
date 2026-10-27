@@ -183,13 +183,16 @@ function CharacterRow({ el, selected }: { el: CanvasElement; selected: boolean }
             {el.hidden ? <Icon name="eye-off" size={10} className="shrink-0 text-mute" /> : null}
           </div>
           <div className="flex items-center gap-1 text-[10px] text-mute">
-            {character.voice ? (
+            {character.voices.length > 0 ? (
               <>
                 <Icon name="volume" size={9} className="text-neon" />
-                <span className="truncate">{character.voice.name || "已配音"}</span>
+                <span className="truncate">
+                  {character.voices.length} 条语音
+                  {character.voiceMode === "random" ? " · 随机" : " · 轮换"}
+                </span>
               </>
             ) : (
-              <span className="text-mute/70">未配音 · 点开右侧绑定</span>
+              <span className="text-mute/70">未配音 · 点开右侧添加</span>
             )}
           </div>
         </div>
@@ -440,7 +443,7 @@ function AssetsTab() {
                     />
                     <IconButton
                       icon="link"
-                      label={selectedCharacter ? "绑定到选中人物" : "先选中人物"}
+                      label={selectedCharacter ? "添加到选中人物" : "先选中人物"}
                       size={13}
                       className="h-6 w-6"
                       onClick={() => {
@@ -449,15 +452,20 @@ function AssetsTab() {
                           return;
                         }
                         updateCharacter(selectedCharacter.id, (c) => {
-                          c.voice = {
-                            id: asset.id,
-                            name: asset.name,
-                            url: asset.url,
-                            duration: asset.duration ?? 0,
-                            volume: 1,
-                          };
+                          if (c.voices.length >= 20) return;
+                          c.voices = [
+                            ...c.voices,
+                            {
+                              id: `${asset.id}-${Math.random().toString(36).slice(2, 6)}`,
+                              name: asset.name,
+                              url: asset.url,
+                              duration: asset.duration ?? 0,
+                              volume: 1,
+                              line: "",
+                            },
+                          ];
                         });
-                        toast(`已把「${asset.name}」绑定给 ${selectedCharacter.character?.name}`, "success");
+                        toast(`已给 ${selectedCharacter.character?.name} 添加一条语音`, "success");
                       }}
                     />
                   </>

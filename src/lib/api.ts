@@ -1,5 +1,6 @@
 import type { AssetRecord, ProjectData, ServerProject } from "./types";
 import { getEditorKey } from "./ids";
+import { normalizeProject } from "./schema";
 
 export class ApiRequestError extends Error {
   status: number;
@@ -71,7 +72,8 @@ export const api = {
   },
 
   async getProject(id: string): Promise<ServerProject> {
-    return request(`/api/projects/${encodeURIComponent(id)}`);
+    const res = await request<ServerProject>(`/api/projects/${encodeURIComponent(id)}`);
+    return { ...res, data: normalizeProject(res.data) };
   },
 
   async deleteProject(id: string): Promise<{ ok: true }> {
@@ -112,7 +114,8 @@ export const api = {
   },
 
   async getPublic(slug: string): Promise<{ project: ServerProject }> {
-    return request(`/api/public/${encodeURIComponent(slug)}`);
+    const res = await request<{ project: ServerProject }>(`/api/public/${encodeURIComponent(slug)}`);
+    return { project: { ...res.project, data: normalizeProject(res.project.data) } };
   },
 
   /** fire-and-forget view counter */

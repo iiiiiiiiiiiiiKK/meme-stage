@@ -4,6 +4,7 @@ import { useEditor } from "../store/editor";
 import { useAutosave, persistNow } from "../hooks/useAutosave";
 import { api, ApiRequestError } from "../lib/api";
 import { createProject } from "../lib/defaults";
+import { normalizeProject } from "../lib/schema";
 import { loadDraft, removeDraft } from "../lib/local";
 import { takePendingProject } from "../lib/remix";
 import { downloadDataUrl } from "../lib/export";
@@ -63,13 +64,25 @@ export function EditorPage() {
       if (!id) {
         const pending = takePendingProject();
         if (pending) {
-          useEditor.getState().loadProject(pending, { id: null, rev: 0 });
+          let project = pending;
+          try {
+            project = normalizeProject(pending);
+          } catch {
+            project = pending;
+          }
+          useEditor.getState().loadProject(project, { id: null, rev: 0 });
           useEditor.setState({ dirty: true });
           if (alive) setLoading(false);
           return;
         }
         const draft = loadDraft("new");
-        const project = draft?.project ? { ...draft.project, updatedAt: Date.now() } : createProject();
+        const rawProject = draft?.project ? { ...draft.project, updatedAt: Date.now() } : createProject();
+        let project = rawProject;
+        try {
+          project = normalizeProject(rawProject);
+        } catch {
+          project = rawProject;
+        }
         useEditor.getState().loadProject(project, { id: null, rev: draft?.rev ?? 0 });
         if (alive) setLoading(false);
         return;
@@ -77,7 +90,11 @@ export function EditorPage() {
 
       const draft = loadDraft(id);
       if (draft) {
-        useEditor.getState().loadProject(draft.project, { id, rev: draft.rev });
+        try {
+          useEditor.getState().loadProject(normalizeProject(draft.project), { id, rev: draft.rev });
+        } catch {
+          useEditor.getState().loadProject(draft.project, { id, rev: draft.rev });
+        }
         if (alive) setLoading(false);
       }
       try {

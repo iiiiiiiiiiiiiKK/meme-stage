@@ -5,5 +5,7 @@
   { "file": "voice-keyboard.wav", "voice": "Microsoft Huihui Desktop", "rate": 2, "text": "我不同意，但我先说为敬。" },
   { "file": "voice-boss.wav", "voice": "Microsoft Huihui Desktop", "rate": -2, "text": "这个需求，今天下班前给我。" },
   { "file": "voice-cat.wav", "voice": "Microsoft Huihui Desktop", "rate": 1, "text": "喵。听不懂，但是喵。" },
+  { "file": "voice-cat2.wav", "voice": "Microsoft Huihui Desktop", "rate": 1, "text": "别问我，我只是一只猫。" },
+  { "file": "voice-cat3.wav", "voice": "Microsoft Huihui Desktop", "rate": 0, "text": "这个家没有我，早就散了。" },
   { "file": "voice-k2.wav", "voice": "Microsoft Huihui Desktop", "rate": 0, "text": "我说了，这波真的不亏。" }
 ]

@@ -268,13 +268,33 @@
           "hold": 2.6
         },
         "effects": { "outline": 0, "shadow": true, "glow": null, "shake": false },
-        "voice": {
-          "id": "vc_cat",
-          "name": "猫猫头 · 但是喵",
-          "url": "/demo/voice-cat.wav",
-          "duration": 3.42,
-          "volume": 1
-        }
+        "voiceMode": "cycle",
+        "voices": [
+          {
+            "id": "vc_cat1",
+            "name": "猫猫头 · 但是喵",
+            "url": "/demo/voice-cat.wav",
+            "duration": 3.42,
+            "volume": 1,
+            "line": "喵。听不懂，但是喵。"
+          },
+          {
+            "id": "vc_cat2",
+            "name": "猫猫头 · 只是一只猫",
+            "url": "/demo/voice-cat2.wav",
+            "duration": 2.84,
+            "volume": 1,
+            "line": "别问我，我只是一只猫。"
+          },
+          {
+            "id": "vc_cat3",
+            "name": "猫猫头 · 这个家",
+            "url": "/demo/voice-cat3.wav",
+            "duration": 3.34,
+            "volume": 1,
+            "line": "这个家没有我，早就散了。"
+          }
+        ]
       }
     },
     {

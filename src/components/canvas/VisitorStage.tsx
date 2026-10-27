@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer, Rect } from "react-konva";
 import Konva from "konva";
 import { ElementNode, type NodeRegistry, type PulseSignal } from "./ElementNode";
-import type { BubbleStyle, CanvasElement, ProjectData } from "../../lib/types";
+import type { BubbleStyle, CanvasElement, ProjectData, VoiceClip } from "../../lib/types";
 import { InteractionRunner, type RuntimeHooks } from "../../lib/engine";
 import { audioEngine } from "../../lib/audio";
+import { chooseVoice } from "../../lib/voice";
 import { fitViewport, frameBounds, worldToScreen, zoomAt, type Viewport } from "../../lib/geometry";
 import { makeBubble } from "../../lib/defaults";
 import { Icon } from "../Icon";
@@ -56,6 +57,7 @@ export function VisitorStage({
   const [interacted, setInteracted] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const voiceCursors = useRef<Map<string, number>>(new Map());
   const projectRef = useRef(project);
   projectRef.current = project;
   const viewportRef = useRef(viewport);
@@ -110,9 +112,16 @@ export function VisitorStage({
     () => ({
       getProject: () => projectRef.current,
       getElement: (id) => projectRef.current.elements.find((el) => el.id === id),
-      playVoice: async (el: CanvasElement) => {
-        const clip = el.character?.voice;
-        if (!clip) return;
+      nextVoice: (el: CanvasElement, clipId?: string) => {
+        const voices = el.character?.voices ?? [];
+        const last = voiceCursors.current.get(el.id) ?? -1;
+        const picked = chooseVoice(voices, el.character?.voiceMode ?? "cycle", last, clipId);
+        if (!picked) return null;
+        voiceCursors.current.set(el.id, picked.index);
+        return picked.clip;
+      },
+      playVoice: async (_el: CanvasElement, clip: VoiceClip) => {
+        if (!clip?.url) return;
         await audioEngine.play(clip, projectRef.current.settings.audioMode);
       },
       showBubble: (el, text, holdSeconds) => {
@@ -268,7 +277,7 @@ export function VisitorStage({
       .filter((item): item is BubbleView => item !== null);
   }, [bubbles, project.elements, viewport, offsets, size.width]);
 
-  const hasVoices = project.elements.some((el) => el.character?.voice?.url);
+  const hasVoices = project.elements.some((el) => (el.character?.voices.length ?? 0) > 0);
 
   return (
     <div

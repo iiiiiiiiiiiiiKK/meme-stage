@@ -31,7 +31,7 @@ export function buildCharacterElement(args: {
   width: number;
   height: number;
   line?: string;
-  voice?: { id: string; name: string; url: string; duration: number };
+  voice?: { id: string; name: string; url: string; duration: number; line?: string };
   accent?: string;
 }): CanvasElement {
   const spawn = centerSpawn(args.project, args.width, args.height);
@@ -52,13 +52,16 @@ export function buildCharacterElement(args: {
       el.character.effects.glow = null;
     }
     if (args.voice) {
-      el.character.voice = {
-        id: args.voice.id,
-        name: args.voice.name,
-        url: args.voice.url,
-        duration: args.voice.duration,
-        volume: 1,
-      };
+      el.character.voices = [
+        {
+          id: args.voice.id,
+          name: args.voice.name,
+          url: args.voice.url,
+          duration: args.voice.duration,
+          volume: 1,
+          ...(args.voice.line ? { line: args.voice.line } : {}),
+        },
+      ];
     }
   }
   return el;

@@ -38,15 +38,21 @@ export interface VoiceClip {
   /** seconds; 0 when unknown */
   duration: number;
   volume: number;
+  /** optional subtitle shown together with this clip */
+  line?: string;
 }
+
+export type VoiceMode = "cycle" | "random";
 
 export interface CharacterData {
   name: string;
   imageUrl: string;
   thumbUrl?: string;
   assetId?: string;
-  voice: VoiceClip | null;
-  /** subtitle / default line */
+  voices: VoiceClip[];
+  /** how repeated clicks pick the next clip */
+  voiceMode: VoiceMode;
+  /** fallback subtitle when the chosen clip has no line */
   line: string;
   bubble: BubbleStyle;
   effects: {

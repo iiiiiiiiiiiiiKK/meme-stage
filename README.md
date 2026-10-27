@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-30%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-41%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -16,7 +16,7 @@
 
 **MEME STAGE** 不是图片编辑器，也不是在线白板。
 
-它把「贴纸拼贴」和「语音互动」揉在一起：一次导入几十个人物，给每个人绑一条独立语音和台词，编排「点谁 → 谁说话 → 谁接梗」的互动链，最后发布成一个**打开就能点、点了就有声音**的网页作品。
+它把「贴纸拼贴」和「语音互动」揉在一起：一次导入几十个人物，给每个人绑多条独立语音和台词，编排「点谁 → 谁说话 → 谁接梗」的互动链，最后发布成一个**打开就能点、点了就有声音**的网页作品。
 
 - 不需要注册，不需要写代码。
 - 桌面端负责创作，手机端负责浏览和玩。
@@ -35,6 +35,10 @@
 | 批量导入 · 自动布局 | 发布后的访客页面 |
 | --- | --- |
 | ![批量导入](docs/screenshots/import.png) | ![发布页](docs/screenshots/published.png) |
+
+| 多语音人物 · 每段独立台词与音量 |
+| --- |
+| ![多语音](docs/screenshots/editor-voices.png) |
 
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
@@ -67,12 +71,14 @@
 
 ### 声音与文字
 
-- 每个人物可绑定独立语音，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
-- 试听、替换、删除、从素材库重新绑定、独立音量。
+- 每个人物最多 **20 条语音**，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
+- 点击人物可按顺序**轮换**或**随机**换语音；每条语音可以带自己的台词和音量。
+- 试听、批量添加、删除、从素材库追加。
 - 台词输入 + 6 种气泡预设（漫画 / 纯色 / 思考 / 字幕 / 大字 / 自定义）。
 - 气泡可调底色、文字色、描边色、描边宽度、圆角、内边距、字号、粗体、斜体、尾巴方向、出现动画、停留时长。
 - 单音频模式（新声音打断旧声音）/ 混音模式，可在作品设置里切换。
 - 音频加载失败、浏览器拦截自动播放、没有绑定语音，都会给出明确提示，不会静默失败。
+- 官方示例：连点「猫猫头」三次，会依次换三段语音和三句不同台词。
 
 ### 互动编排
 
@@ -247,7 +253,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（30 个，全部通过）
+### 单元测试（41 个，全部通过）
 
 ```bash
 npm test
@@ -257,7 +263,8 @@ npm test
 
 - 6 种自动布局的边界、去重、确定性、比例保持、画幅内约束。
 - 项目 schema：重复 ID、非法类型、越界数值、`javascript:` / `//evil` URL、颜色注入、事件引用、序列化。
-- 交互运行时：默认反应、顺序执行、并行、事件链、循环保护、缺失语音、快速点击取消。
+- 交互运行时：默认反应、顺序执行、并行、事件链、循环保护、缺失语音、快速点击取消、多语音轮换、指定语音播放。
+- 语音选择：顺序轮换、随机不重复、指定片段、单语音、空列表。
 - 视口几何：适配、围绕指针缩放、吸附、旋转内容包围盒。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
@@ -266,7 +273,7 @@ npm test
 npm run test:e2e       # Playwright: 桌面 + 手机（Pixel 7 视口）公共页面
 ```
 
-`npm run test:e2e` 在 2026-10-27 的结果：**12 / 12 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 404）。
+`npm run test:e2e` 在 2026-10-27 的结果：**15 / 15 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 多语音轮换 / 404）。
 
 完整创作闭环用下面的脚本复跑：
 
@@ -285,6 +292,9 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 人物独立拖动 + 撤销 | ✅ 坐标变化后 `⌘Z` 精确还原 |
 | 滚轮缩放 | ✅ 140% → 226% |
 | 绑定语音 + 台词 | ✅ 上传 R2，回读 URL 正确 |
+| 同一人物多语音轮换 | ✅ 猫猫头 3 条语音，连点 3 次换 3 段音频 + 3 句不同台词（桌面 / Pixel / Safari） |
+| 编辑器添加多条语音 | ✅ 一次上传 3 条，列表显示 4 条（含原有 1 条），模式为轮换 |
+| 旧版单语音作品迁移 | ✅ 旧的 `voice` 字段自动迁移为 `voices[]`，发布页仍可播放 |
 | 新建互动事件 | ✅ 触发者、动作、下一事件写入作品 JSON |
 | 发布 + 分享链接 | ✅ `/p/person-01-20-…` 可访问，封面写入 R2 |
 | 手机打开分享链接 | ✅ 390×844，无横向溢出 |
@@ -397,7 +407,7 @@ npm run build && npm test
 
 ## English
 
-**MEME STAGE** is an infinite-canvas studio for interactive memes. Import dozens of characters at once, give each one its own voice clip and line, wire up click-driven dialogue chains, and publish a single link that anyone can open and play — no sign-up, no code.
+**MEME STAGE** is an infinite-canvas studio for interactive memes. Import dozens of characters at once, give each one a set of voice clips and lines (they cycle on every tap), wire up click-driven dialogue chains, and publish a single link that anyone can open and play — no sign-up, no code.
 
 **Live:** https://meme-stage.pages.dev · **Demo:** https://meme-stage.pages.dev/p/demo · **Author:** [@0xkillcoin](https://x.com/0xkillcoin)
 
@@ -405,7 +415,7 @@ npm run build && npm test
 
 - True infinite canvas: pan, wheel/pinch zoom, marquee + shift multi-select, group drag, rotate/resize, snapping guides, layers, 60-step undo/redo, keyboard shortcuts.
 - Batch import of up to 300 images with client-side WebP compression and six auto-layout modes (no stacking).
-- Per-character voice (MP3/WAV/M4A/OGG), subtitles, six bubble presets, fully styleable.
+- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), six bubble presets, fully styleable.
 - Visual interaction editor: trigger → ordered/parallel actions → next event, with loop protection. The preview runs the exact same engine as the published page.
 - Autosave with real status, offline drafts, optimistic revisions, conflict recovery.
 - Publish to `/p/:slug` with an auto-generated 1200×630 Open Graph cover; PNG and JSON export; remix.

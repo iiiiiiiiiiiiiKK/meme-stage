@@ -98,6 +98,53 @@ describe("project schema", () => {
     expect(normalized.elements.map((el) => el.z)).toEqual([1, 2]);
   });
 
+  it("migrates the legacy single-voice field into a voice list", () => {
+    const raw = baseProject() as unknown as {
+      elements: { character: Record<string, unknown> }[];
+    };
+    delete raw.elements[0].character.voices;
+    raw.elements[0].character.voice = {
+      id: "legacy",
+      name: "旧语音",
+      url: "/demo/voice-k.wav",
+      duration: 3.2,
+      volume: 0.8,
+    };
+    const normalized = normalizeProject(raw);
+    const voices = normalized.elements[0].character!.voices;
+    expect(voices).toHaveLength(1);
+    expect(voices[0].id).toBe("legacy");
+    expect(voices[0].url).toBe("/demo/voice-k.wav");
+    expect(normalized.elements[0].character!.voiceMode).toBe("cycle");
+  });
+
+  it("keeps multiple valid voices, drops unsafe ones and normalises the mode", () => {
+    const project = baseProject();
+    project.elements[0].character!.voices = [
+      { id: "v1", name: "一", url: "/a.wav", duration: 1, volume: 1, line: "第一句" },
+      { id: "v2", name: "二", url: "javascript:alert(1)", duration: 1, volume: 1 },
+      { id: "v3", name: "三", url: "/c.wav", duration: 2, volume: 1 },
+    ];
+    (project.elements[0].character as unknown as { voiceMode: string }).voiceMode = "random";
+    const normalized = normalizeProject(project);
+    const character = normalized.elements[0].character!;
+    expect(character.voices.map((v) => v.id)).toEqual(["v1", "v3"]);
+    expect(character.voices[0].line).toBe("第一句");
+    expect(character.voiceMode).toBe("random");
+  });
+
+  it("caps the voice list per character", () => {
+    const project = baseProject();
+    project.elements[0].character!.voices = Array.from({ length: 40 }, (_, i) => ({
+      id: `v${i}`,
+      name: `v${i}`,
+      url: `/v${i}.wav`,
+      duration: 1,
+      volume: 1,
+    }));
+    expect(normalizeProject(project).elements[0].character!.voices).toHaveLength(20);
+  });
+
   it("serialises to a stable JSON document", () => {
     const project = baseProject();
     const { json, project: normalized } = normalizeForStorage(project);

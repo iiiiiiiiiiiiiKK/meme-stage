@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { AssetRecord } from "../lib/types";
 import { api } from "../lib/api";
+import { getEditorKey } from "../lib/ids";
 
 interface AssetState {
   items: AssetRecord[];
@@ -20,7 +21,7 @@ export const useAssets = create<AssetState>((set, get) => ({
     set({ loading: true });
     try {
       const res = await fetch("/api/assets", {
-        headers: { "X-Editor-Key": localStorage.getItem("ms.editor.key") ?? "" },
+        headers: { "X-Editor-Key": getEditorKey() },
       });
       if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as { assets: AssetRecord[] };
@@ -35,7 +36,7 @@ export const useAssets = create<AssetState>((set, get) => ({
   remove: async (id) => {
     const res = await fetch(`/api/assets/${encodeURIComponent(id)}`, {
       method: "DELETE",
-      headers: { "X-Editor-Key": localStorage.getItem("ms.editor.key") ?? "" },
+      headers: { "X-Editor-Key": getEditorKey() },
     });
     if (!res.ok) {
       const payload = (await res.json().catch(() => null)) as { message?: string } | null;

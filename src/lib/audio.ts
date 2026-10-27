@@ -144,6 +144,6 @@ export class AudioEngine {
 
 export const audioEngine = new AudioEngine();
 
-export function elementVoice(el: CanvasElement | undefined): VoiceClip | null {
-  return el?.type === "character" ? el.character?.voice ?? null : null;
+export function elementVoices(el: CanvasElement | undefined): VoiceClip[] {
+  return el?.type === "character" ? el.character?.voices ?? [] : [];
 }

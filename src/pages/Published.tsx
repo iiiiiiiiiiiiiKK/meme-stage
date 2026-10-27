@@ -7,6 +7,7 @@ import { Button, IconButton, Spinner, toast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { copyText } from "../lib/export";
 import { absoluteUrl } from "../lib/api";
+import { normalizeProject } from "../lib/schema";
 import type { ProjectData } from "../lib/types";
 
 interface Loaded {
@@ -65,8 +66,14 @@ export function PublishedPage() {
           };
         };
         if (!alive) return;
+        let data = payload.project.data;
+        try {
+          data = normalizeProject(data);
+        } catch {
+          // keep the raw document and let the UI surface the problem
+        }
         setLoaded({
-          data: payload.project.data,
+          data,
           title: payload.project.title,
           description: payload.project.description,
           author: payload.project.data.settings.authorName || "",

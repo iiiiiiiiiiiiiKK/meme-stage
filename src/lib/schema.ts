@@ -112,8 +112,32 @@ function element(raw: unknown, index: number): CanvasElement {
     const imageUrl = safeUrl(c.imageUrl);
     if (!imageUrl) throw new ValidationError(`第 ${index + 1} 个人物缺少有效图片`);
     const effects = (c.effects ?? {}) as Record<string, unknown>;
-    const voiceRaw = c.voice as Record<string, unknown> | null | undefined;
-    const voiceUrl = voiceRaw ? safeUrl(voiceRaw.url) : null;
+    const voices: NonNullable<CanvasElement["character"]>["voices"] = [];
+    const seenVoiceIds = new Set<string>();
+    const pushVoice = (raw: unknown) => {
+      if (!raw || typeof raw !== "object" || voices.length >= 20) return;
+      const v = raw as Record<string, unknown>;
+      const voiceUrl = safeUrl(v.url);
+      if (!voiceUrl) return;
+      const id = str(v.id, 64) || `voice_${voices.length + 1}`;
+      if (seenVoiceIds.has(id)) return;
+      seenVoiceIds.add(id);
+      const line = str(v.line, LIMITS.line);
+      voices.push({
+        id,
+        name: str(v.name, LIMITS.name, "语音") || "语音",
+        url: voiceUrl,
+        assetId: str(v.assetId, 64) || undefined,
+        duration: num(v.duration, 0, 0, 600),
+        volume: num(v.volume, 1, 0, 1),
+        ...(line ? { line } : {}),
+      });
+    };
+    // legacy documents stored a single `voice`; migrate them on read
+    if (c.voice) pushVoice(c.voice);
+    if (Array.isArray(c.voices)) {
+      for (const raw of c.voices) pushVoice(raw);
+    }
     el.character = {
       name: str(c.name, LIMITS.name, `人物 ${index + 1}`),
       imageUrl,
@@ -127,17 +151,8 @@ function element(raw: unknown, index: number): CanvasElement {
         glow: effects.glow ? color(effects.glow, "#b6ff3c") : null,
         shake: bool(effects.shake),
       },
-      voice:
-        voiceRaw && voiceUrl
-          ? {
-              id: str(voiceRaw.id, 64) || "voice",
-              name: str(voiceRaw.name, LIMITS.name, "语音"),
-              url: voiceUrl,
-              assetId: str(voiceRaw.assetId, 64) || undefined,
-              duration: num(voiceRaw.duration, 0, 0, 600),
-              volume: num(voiceRaw.volume, 1, 0, 1),
-            }
-          : null,
+      voices,
+      voiceMode: c.voiceMode === "random" ? "random" : "cycle",
     };
   }
 

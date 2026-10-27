@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useEditor } from "../../store/editor";
 import { useAssets } from "../../store/assets";
-import { Icon } from "../Icon";
 import {
   Button,
   ColorInput,
@@ -279,7 +278,7 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
   const assets = useAssets((s) => s.items);
   const loadAssets = useAssets((s) => s.load);
   const character = el.character!;
-  const [previewing, setPreviewing] = useState(false);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
   const voiceInput = useRef<HTMLInputElement | null>(null);
   const [binding, setBinding] = useState(false);
 
@@ -289,21 +288,36 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
 
   const audioAssets = assets.filter((a) => a.kind === "audio");
 
-  const bindAudio = async (file: File) => {
+  const appendClip = (clip: NonNullable<typeof character.voices>[number], history = false) => {
+    updateCharacter(
+      el.id,
+      (c) => {
+        if (c.voices.length >= 20) return;
+        c.voices = [...c.voices, clip];
+      },
+      history,
+    );
+  };
+
+  const uploadVoices = async (files: File[]) => {
+    if (files.length === 0) return;
     setBinding(true);
+    let added = 0;
     try {
-      const duration = await audioDuration(file);
-      const asset = await api.uploadAsset(file, { kind: "audio", name: file.name, duration });
-      updateCharacter(el.id, (c) => {
-        c.voice = {
+      for (const file of files) {
+        const duration = await audioDuration(file);
+        const asset = await api.uploadAsset(file, { kind: "audio", name: file.name, duration });
+        appendClip({
           id: asset.id,
-          name: file.name,
+          name: file.name.replace(/\.[^.]+$/, "").slice(0, 40),
           url: asset.url,
           duration: asset.duration ?? duration,
           volume: 1,
-        };
-      });
-      toast("语音已绑定", "success");
+          line: "",
+        });
+        added += 1;
+      }
+      toast(`已添加 ${added} 条语音，点人物会按顺序轮换`, "success");
     } catch (error) {
       toast(error instanceof Error ? error.message : "语音上传失败", "error");
     } finally {
@@ -352,109 +366,178 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         </div>
       </div>
 
-      <Section title="声音" action={<span className="text-[9px] text-mute">{character.voice ? "已绑定" : "未绑定"}</span>}>
+      <Section
+        title="声音"
+        action={
+          <span className="text-[9px] text-mute">
+            {character.voices.length > 0 ? `${character.voices.length} 条` : "未绑定"}
+          </span>
+        }
+      >
         <input
           ref={voiceInput}
           type="file"
+          multiple
           accept="audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,.mp3,.wav,.m4a,.ogg"
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const files = e.target.files ? Array.from(e.target.files) : [];
             e.currentTarget.value = "";
-            if (file) void bindAudio(file);
+            if (files.length) void uploadVoices(files);
           }}
         />
-        {character.voice ? (
-          <div className="rounded-lg border border-neon/30 bg-neon/5 p-2">
-            <div className="flex items-center gap-1.5">
-              <Icon name="music" size={12} className="text-neon" />
-              <span className="min-w-0 flex-1 truncate text-[11px]">{character.voice.name}</span>
-              <span className="text-[9px] text-mute">{character.voice.duration.toFixed(1)}s</span>
-            </div>
-            <div className="mt-1.5 flex gap-1">
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={previewing ? "pause" : "play"}
-                className="flex-1"
-                onClick={async () => {
-                  if (previewing) {
-                    audioEngine.stop();
-                    setPreviewing(false);
-                    return;
-                  }
-                  setPreviewing(true);
-                  await audioEngine.play(character.voice!, "single");
-                  setPreviewing(false);
-                }}
-              >
-                {previewing ? "停止" : "试听"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => voiceInput.current?.click()}>
-                替换
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() =>
-                  updateCharacter(el.id, (c) => {
-                    c.voice = null;
-                  })
-                }
-              >
-                删除
-              </Button>
-            </div>
-            <div className="mt-2">
-              <Field label="音量" hint={`${Math.round(character.voice.volume * 100)}%`}>
-                <Slider
-                  value={character.voice.volume}
-                  min={0}
-                  max={1}
-                  onChange={(volume) =>
+
+        {character.voices.length === 0 ? (
+          <p className="rounded-md border border-dashed border-line px-2 py-2 text-[10px] leading-relaxed text-mute">
+            还没有语音。一次可以上传多条，点击人物会按顺序换着播；每条都可以配自己的台词。
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {character.voices.map((clip, index) => (
+              <div key={clip.id} className="space-y-1.5 rounded-lg border border-line bg-ink p-2">
+                <div className="flex items-center gap-1">
+                  <span className="w-3 shrink-0 text-center text-[9px] tabular-nums text-mute">
+                    {index + 1}
+                  </span>
+                  <TextInput
+                    value={clip.name}
+                    maxLength={40}
+                    aria-label={`语音 ${index + 1} 名称`}
+                    className="h-7 min-w-0 flex-1 text-[11px]"
+                    onChange={(e) =>
+                      updateCharacter(
+                        el.id,
+                        (c) => {
+                          const target = c.voices.find((v) => v.id === clip.id);
+                          if (target) target.name = e.target.value;
+                        },
+                        true,
+                        `vname:${clip.id}`,
+                      )
+                    }
+                  />
+                  <span className="shrink-0 text-[9px] text-mute">{clip.duration.toFixed(1)}s</span>
+                  <IconButton
+                    icon={previewingId === clip.id ? "pause" : "play"}
+                    label={previewingId === clip.id ? "停止试听" : "试听"}
+                    size={12}
+                    className="h-6 w-6"
+                    onClick={async () => {
+                      if (previewingId === clip.id) {
+                        audioEngine.stop();
+                        setPreviewingId(null);
+                        return;
+                      }
+                      setPreviewingId(clip.id);
+                      await audioEngine.play(clip, "single");
+                      setPreviewingId((current) => (current === clip.id ? null : current));
+                    }}
+                  />
+                  <IconButton
+                    icon="trash"
+                    label="删除这条语音"
+                    size={12}
+                    className="h-6 w-6 hover:text-hot"
+                    onClick={() =>
+                      updateCharacter(el.id, (c) => {
+                        c.voices = c.voices.filter((v) => v.id !== clip.id);
+                      })
+                    }
+                  />
+                </div>
+                <input
+                  value={clip.line ?? ""}
+                  maxLength={280}
+                  placeholder="这段的台词（可选，播放时显示）"
+                  aria-label={`语音 ${index + 1} 台词`}
+                  className="h-7 w-full rounded border border-line bg-ink-2 px-1.5 text-[10.5px] text-paper outline-none focus:border-neon/50"
+                  onChange={(e) =>
                     updateCharacter(
                       el.id,
                       (c) => {
-                        if (c.voice) c.voice.volume = volume;
+                        const target = c.voices.find((v) => v.id === clip.id);
+                        if (target) target.line = e.target.value;
                       },
                       true,
-                      `vol:${el.id}`,
+                      `vline:${clip.id}`,
                     )
                   }
-                  label={`${Math.round(character.voice.volume * 100)}`}
                 />
-              </Field>
-            </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-mute">音量</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.02}
+                    value={clip.volume}
+                    aria-label={`语音 ${index + 1} 音量`}
+                    className="h-1 w-full cursor-pointer appearance-none rounded-full bg-line"
+                    onChange={(e) =>
+                      updateCharacter(
+                        el.id,
+                        (c) => {
+                          const target = c.voices.find((v) => v.id === clip.id);
+                          if (target) target.volume = Number(e.target.value);
+                        },
+                        false,
+                        `vvol:${clip.id}`,
+                      )
+                    }
+                  />
+                  <span className="w-7 shrink-0 text-right text-[9px] tabular-nums text-mute">
+                    {Math.round(clip.volume * 100)}%
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            icon="upload"
-            className="w-full"
-            disabled={binding}
-            onClick={() => voiceInput.current?.click()}
-          >
-            {binding ? "上传中…" : "上传语音（MP3 / WAV / M4A / OGG）"}
-          </Button>
         )}
 
+        <Button
+          size="sm"
+          variant="outline"
+          icon="upload"
+          className="w-full"
+          disabled={binding || character.voices.length >= 20}
+          onClick={() => voiceInput.current?.click()}
+        >
+          {binding ? "上传中…" : character.voices.length >= 20 ? "最多 20 条语音" : "添加语音（可多选）"}
+        </Button>
+
+        <Field label="播放方式">
+          <Select
+            value={character.voiceMode}
+            onChange={(e) =>
+              updateCharacter(
+                el.id,
+                (c) => void (c.voiceMode = e.target.value === "random" ? "random" : "cycle"),
+              )
+            }
+          >
+            <option value="cycle">按顺序轮换（点一次换一条）</option>
+            <option value="random">随机（尽量不重复上一条）</option>
+          </Select>
+        </Field>
+
         {audioAssets.length > 0 ? (
-          <Field label="从素材库绑定">
+          <Field label="从素材库添加">
             <Select
-              value={character.voice?.id ?? ""}
+              value=""
               onChange={(e) => {
                 const asset = audioAssets.find((a) => a.id === e.target.value);
                 if (!asset) return;
-                updateCharacter(el.id, (c) => {
-                  c.voice = {
-                    id: asset.id,
-                    name: asset.name,
+                appendClip(
+                  {
+                    id: `${asset.id}-${Math.random().toString(36).slice(2, 6)}`,
+                    name: asset.name.replace(/\.[^.]+$/, "").slice(0, 40),
                     url: asset.url,
                     duration: asset.duration ?? 0,
                     volume: 1,
-                  };
-                });
+                    line: "",
+                  },
+                  true,
+                );
               }}
             >
               <option value="">选择已上传的音频…</option>
@@ -467,7 +550,7 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
           </Field>
         ) : null}
 
-        <Field label="默认台词" hint="点击人物时显示">
+        <Field label="默认台词" hint="当前语音没有单独台词时显示">
           <TextArea
             value={character.line}
             maxLength={280}

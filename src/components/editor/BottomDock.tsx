@@ -444,6 +444,8 @@ function StepRow({
   onMove: (delta: number) => void;
 }) {
   const label = STEP_TYPES.find((item) => item.type === step.type)?.label ?? step.type;
+  const targetElement = characters.find((el) => el.id === step.targetId);
+  const targetVoices = targetElement?.character?.voices ?? [];
   return (
     <div className="flex flex-wrap items-center gap-1 rounded-md border border-line/70 bg-ink px-1.5 py-1">
       <span className="w-6 shrink-0 text-center text-[9px] tabular-nums text-mute">{index + 1}</span>
@@ -464,8 +466,23 @@ function StepRow({
         </Select>
       ) : null}
 
-      {step.type === "say" ? (
-        <>
+      {step.type === "playAudio" && targetVoices.length > 0 ? (
+        <Select
+          value={step.clipId ?? ""}
+          onChange={(e) => onChange({ clipId: e.target.value || undefined })}
+          className="h-7 w-[132px] text-[10px]"
+          aria-label="选择要播放的语音"
+        >
+          <option value="">下一条（轮换）</option>
+          {targetVoices.map((clip, i) => (
+            <option key={clip.id} value={clip.id}>
+              {i + 1}. {clip.name}
+            </option>
+          ))}
+        </Select>
+      ) : null}
+
+      {step.type === "say" ? (        <>
           <input
             value={step.text ?? ""}
             onChange={(e) => onChange({ text: e.target.value })}

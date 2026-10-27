@@ -49,6 +49,35 @@ test.describe("published demo", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
+  test("multi-voice character cycles clips and subtitles", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__played = [];
+      HTMLMediaElement.prototype.play = function () {
+        window.__played.push(this.currentSrc || this.src);
+        setTimeout(() => this.dispatchEvent(new Event("ended")), 90);
+        return Promise.resolve();
+      };
+      HTMLMediaElement.prototype.pause = function () {};
+    });
+    await page.goto("/p/demo", { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="visitor"] canvas');
+    await page.waitForTimeout(400);
+
+    const lines = ["喵。听不懂，但是喵。", "别问我，我只是一只猫。", "这个家没有我，早就散了。"];
+    for (let i = 0; i < 3; i++) {
+      await clickDemoCharacter(page, 1380, 630); // 猫猫头 center, three voices
+      await page.waitForTimeout(650);
+      await expect(page.getByText(lines[i]).first()).toBeVisible();
+    }
+
+    const played = await page.evaluate(() => window.__played);
+    const clips = [...new Set(played.filter((url) => url.includes("voice-cat")))];
+    expect(clips.length).toBe(3);
+    expect(clips.some((url) => url.endsWith("voice-cat.wav"))).toBe(true);
+    expect(clips.some((url) => url.endsWith("voice-cat2.wav"))).toBe(true);
+    expect(clips.some((url) => url.endsWith("voice-cat3.wav"))).toBe(true);
+  });
+
   test("404 page is helpful", async ({ page }) => {
     await page.goto("/p/this-does-not-exist", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("这个作品还没上线")).toBeVisible({ timeout: 20_000 });

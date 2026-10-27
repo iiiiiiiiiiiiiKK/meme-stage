@@ -4,12 +4,15 @@ import type {
   EventDef,
   ProjectData,
   Step,
+  VoiceClip,
 } from "./types";
 
 export interface RuntimeHooks {
   getProject(): ProjectData;
   getElement(id: string): CanvasElement | undefined;
-  playVoice(el: CanvasElement, clipId?: string): Promise<void>;
+  /** advances the per-character cursor and returns the clip that should play */
+  nextVoice(el: CanvasElement, clipId?: string): VoiceClip | null;
+  playVoice(el: CanvasElement, clip: VoiceClip): Promise<void>;
   showBubble(el: CanvasElement, text: string, holdSeconds: number): void;
   hideBubble(elId: string): void;
   animate(el: CanvasElement, animation: AnimationName): void;
@@ -68,20 +71,25 @@ export class InteractionRunner {
       return;
     }
     const project = this.hooks.getProject();
-    const voice = el.character?.voice;
     const line = el.character?.line?.trim();
-    const hold = Math.max(el.character?.bubble.hold ?? 2.4, voice?.duration ?? 0);
+    const voices = el.character?.voices ?? [];
     const myRun = ++this.runId;
 
     if (project.settings.reactions) this.hooks.animate(el, "bounce");
-    if (line || voice) {
-      this.hooks.showBubble(el, line || "……", hold);
+
+    if (voices.length === 0) {
+      if (line) this.hooks.showBubble(el, line, el.character?.bubble.hold ?? 2.4);
+      return;
     }
-    if (voice) {
-      await this.hooks.playVoice(el);
-      if (myRun !== this.runId) return;
-      if (line) this.hooks.showBubble(el, line, hold);
-    }
+
+    const clip = this.hooks.nextVoice(el);
+    if (!clip) return;
+    const text = clip.line?.trim() || line;
+    const hold = Math.max(el.character?.bubble.hold ?? 2.4, clip.duration || 0);
+    if (text) this.hooks.showBubble(el, text, hold);
+    await this.hooks.playVoice(el, clip);
+    if (myRun !== this.runId) return;
+    if (text) this.hooks.showBubble(el, text, hold);
   }
 
   async runEvent(
@@ -141,8 +149,19 @@ export class InteractionRunner {
           this.hooks.onError?.("这个动作没有指定人物");
           return;
         }
-        if (el.type === "character" && el.character?.voice) {
-          await this.hooks.playVoice(el, step.clipId);
+        const voices = el.type === "character" ? el.character?.voices ?? [] : [];
+        if (voices.length > 0) {
+          const clip = this.hooks.nextVoice(el, step.clipId);
+          if (!clip) return;
+          const text = clip.line?.trim();
+          if (text) {
+            this.hooks.showBubble(
+              el,
+              text,
+              Math.max(el.character?.bubble.hold ?? 2.6, clip.duration || 0),
+            );
+          }
+          await this.hooks.playVoice(el, clip);
         } else {
           this.hooks.onError?.(`「${el.character?.name ?? "该人物"}」还没有绑定语音`, el);
         }
@@ -207,7 +226,9 @@ export class InteractionRunner {
 export function collectVoices(project: ProjectData): string[] {
   const urls = new Set<string>();
   for (const el of project.elements) {
-    if (el.character?.voice?.url) urls.add(el.character.voice.url);
+    for (const clip of el.character?.voices ?? []) {
+      if (clip.url) urls.add(clip.url);
+    }
   }
   return Array.from(urls);
 }
