@@ -121,19 +121,33 @@ function element(raw: unknown, index: number): CanvasElement {
     const pushVoice = (raw: unknown) => {
       if (!raw || typeof raw !== "object" || voices.length >= 20) return;
       const v = raw as Record<string, unknown>;
+      const source =
+        v.source === "device" ? "device" : v.source === "tts" ? "tts" : v.source === "upload" ? "upload" : undefined;
+      const text = str(v.text, LIMITS.line);
       const voiceUrl = safeUrl(v.url);
-      if (!voiceUrl) return;
+      // device voices are synthesized on the visitor's browser and need no file
+      if (source === "device") {
+        if (!text) return;
+      } else if (!voiceUrl) {
+        return;
+      }
       const id = str(v.id, 64) || `voice_${voices.length + 1}`;
       if (seenVoiceIds.has(id)) return;
       seenVoiceIds.add(id);
       const line = str(v.line, LIMITS.line);
       const rate = num(v.rate, 1, 0.5, 2);
-      const source = v.source === "tts" ? "tts" : v.source === "upload" ? "upload" : undefined;
-      const lang = ["zh", "en", "jp", "kr", "fr", "es"].includes(String(v.lang)) ? String(v.lang) : undefined;
+      const pitch = num(v.pitch, 1, 0.5, 2);
+      const langRaw = str(v.lang, 20);
+      const lang =
+        source === "device"
+          ? langRaw || undefined
+          : ["zh", "en", "jp", "kr", "fr", "es"].includes(langRaw)
+            ? langRaw
+            : undefined;
       voices.push({
         id,
         name: str(v.name, LIMITS.name, "语音") || "语音",
-        url: voiceUrl,
+        url: voiceUrl ?? "",
         assetId: str(v.assetId, 64) || undefined,
         duration: num(v.duration, 0, 0, 600),
         volume: num(v.volume, 1, 0, 1),
@@ -141,6 +155,9 @@ function element(raw: unknown, index: number): CanvasElement {
         ...(rate !== 1 ? { rate } : {}),
         ...(source ? { source } : {}),
         ...(lang ? { lang } : {}),
+        ...(source === "device" ? { text } : {}),
+        ...(source === "device" && v.voiceURI ? { voiceURI: str(v.voiceURI, 200) } : {}),
+        ...(source === "device" && pitch !== 1 ? { pitch } : {}),
       });
     };
     // legacy documents stored a single `voice`; migrate them on read

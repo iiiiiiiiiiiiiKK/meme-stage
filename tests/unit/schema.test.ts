@@ -201,6 +201,35 @@ describe("project schema", () => {
     expect(clip.source).toBeUndefined();
   });
 
+  it("keeps device speech clips without an audio file", () => {
+    const project = baseProject();
+    project.elements[0].character!.voices = [
+      {
+        id: "dev1",
+        name: "设备朗读",
+        url: "",
+        duration: 1.8,
+        volume: 1,
+        source: "device",
+        text: "这波真的不亏。",
+        lang: "zh-CN",
+        rate: 1.2,
+        pitch: 1.1,
+        voiceURI: "Microsoft Huihui",
+      },
+      { id: "bad", name: "空设备语音", url: "", duration: 0, volume: 1, source: "device", text: "" },
+    ];
+    const voices = normalizeProject(project).elements[0].character!.voices;
+    expect(voices).toHaveLength(1);
+    expect(voices[0]).toMatchObject({
+      source: "device",
+      text: "这波真的不亏。",
+      voiceURI: "Microsoft Huihui",
+      rate: 1.2,
+      pitch: 1.1,
+    });
+  });
+
   it("serialises to a stable JSON document", () => {
     const project = baseProject();
     const { json, project: normalized } = normalizeForStorage(project);

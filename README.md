@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-56%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-60%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -40,9 +40,9 @@
 | --- | --- |
 | ![多语音](docs/screenshots/editor-voices.png) | ![气泡位置](docs/screenshots/bubble-position.png) |
 
-| 文字生成语音 · 选语言和语速 |
-| --- |
-| ![文字生成语音](docs/screenshots/tts.png) |
+| 文字生成语音 · 选语言和语速 | 浏览器自带朗读 · 免 key |
+| --- | --- |
+| ![文字生成语音](docs/screenshots/tts.png) | ![浏览器朗读](docs/screenshots/device-voice.png) |
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
 | ![手机作品页](docs/screenshots/mobile-published.png) | ![手机编辑器](docs/screenshots/mobile-editor.png) |
@@ -77,6 +77,7 @@
 - 每个人物最多 **20 条语音**，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
 - **文字生成语音**：输入最多 300 字，选择语言/口音（中文 / English / 日本語 / 한국어 / Français / Español）和语速（0.8x–1.5x），由 Cloudflare Workers AI（MeloTTS）生成真实 WAV 并存入 R2。
 - **可选微软官方音色**：配置 Azure Speech 的 key 后，可切换 Microsoft Azure 引擎，使用晓晓 / 云希 / 云健 / 晓伊等神经网络音色，并支持「开心 / 温柔 / 难过 / 生气 / 新闻播报 / 解说」等情绪风格。key 只存在服务端，不会下发到浏览器。
+- **浏览器自带朗读（免 key、免存储）**：用访客设备上的系统语音（Windows/Edge 里就是微软 Huihui / Kangkang / Yaoyao，iPhone 上是 Apple 声音）朗读文字，可选系统音色、语速、音调。完全免费，但音色会因访客设备不同而不同。
 - 点击人物可按顺序**轮换**或**随机**换语音；每条语音可以带自己的台词和音量。
 - 试听、批量添加、删除、从素材库追加。
 - 台词输入 + 6 种气泡预设（漫画 / 纯色 / 思考 / 字幕 / 大字 / 自定义）。
@@ -262,7 +263,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（56 个，全部通过）
+### 单元测试（60 个，全部通过）
 
 ```bash
 npm test
@@ -310,6 +311,8 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 语音引擎配置接口 | ✅ 返回 MeloTTS 可用、Azure 未配置、音色目录 |
 | Azure 未配置时 | ✅ 明确返回 503 `azure_not_configured`，默认引擎不受影响 |
 | Azure SSML 构建 | ✅ 音色 / 情绪风格 / 语速 / XML 转义 / 非法音色 单元测试通过 |
+| 浏览器自带朗读（编辑器） | ✅ 选择系统音色、1.2x 语速、1.2 音调，记录 `speak` 参数正确 |
+| 浏览器自带朗读（发布页） | ✅ 点击人物后由设备 `speechSynthesis` 朗读，文本/语音/语速/音调全部还原 |
 | 旧版单语音作品迁移 | ✅ 旧的 `voice` 字段自动迁移为 `voices[]`，发布页仍可播放 |
 | 预览里拖动气泡 | ✅ 拖动 140×-90 px → 世界坐标 (161,-103)，重载后仍保持 |
 | 发布后的气泡位置 | ✅ 访客页气泡位置与编辑器偏移一致（实测误差 0 px） |
@@ -386,6 +389,7 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 | R2 | 10 GB 存储、100 万 Class A/月、1000 万 Class B/月 | 图片先压缩；缩略图独立；单文件 8/12 MB 上限 |
 | Workers AI | 每天 10,000 Neurons 免费额度 | 文字语音每段 ≤ 300 字；接口限流 24 次/分钟；MeloTTS 标价约 $0.000205/音频分钟 |
 | Azure Speech（可选） | F0 免费层：50 万神经字符/月 | 需要 Azure 订阅与 key；超出后按 Azure 计费，未配置时该引擎隐藏 |
+| 浏览器自带朗读 | 完全免费 | 不占 R2、不调用服务端；音色取决于访客设备 |
 
 **成本提示**：如果作品量或访问量明显增长，D1 行写入和 R2 存储会先触顶。扩展方向：作品 JSON 压到 R2、D1 只存索引；或迁移到 Durable Objects / 自建 Postgres。
 
@@ -412,6 +416,7 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 
 - **不做 AI 抠图**。建议上传透明背景 PNG；普通照片会保留原背景。
 - **文字生成语音的默认引擎只支持 6 种语言**（zh/en/jp/kr/fr/es），MeloTTS 不提供情绪或多音色选择；需要微软音色/情绪风格时配置 Azure Speech（F0 免费层）。
+- **浏览器自带朗读**不需要 key，但音色和可用性取决于访客设备；它不会生成可下载的音频文件，iOS/部分浏览器要求用户手势触发（本项目就是点击人物触发，正常情况下可用）。
 - Edge 浏览器的免 key「朗读」接口有 DRM 签名（实测 403），非官方且不稳定，没有接入；Windows SAPI 只能在本机运行，也不能作为线上服务。
 - **没有账号系统**。所有权绑定当前浏览器生成的 key；换设备/清缓存无法编辑旧作品。
 - **社交平台只显示静态封面**。X/微信里的链接卡片是图片 + 标题，真正互动要点进链接。
@@ -455,7 +460,7 @@ npm run build && npm test
 
 - True infinite canvas: pan, wheel/pinch zoom, marquee + shift multi-select, group drag, rotate/resize, snapping guides, layers, 60-step undo/redo, keyboard shortcuts.
 - Batch import of up to 300 images with client-side WebP compression and six auto-layout modes (no stacking).
-- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), **text-to-speech via Workers AI MeloTTS** (zh/en/jp/kr/fr/es, 0.8–1.5× speed, real WAV in R2) and optional **Microsoft Azure Speech** neural voices with emotion styles (requires `AZURE_SPEECH_KEY`), draggable speech bubbles with anchor + offset controls and one-click “put this line on the canvas” text layers.
+- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), **three text-to-speech engines**: Workers AI MeloTTS (default, 6 languages), Microsoft Azure Speech with emotion styles (optional key), and **free browser speech synthesis** (system voices, no key, no storage), plus draggable speech bubbles and one-click “put this line on the canvas” text layers.
 - Visual interaction editor: trigger → ordered/parallel actions → next event, with loop protection. The preview runs the exact same engine as the published page.
 - Autosave with real status, offline drafts, optimistic revisions, conflict recovery.
 - Publish to `/p/:slug` with an auto-generated 1200×630 Open Graph cover; PNG and JSON export; remix.

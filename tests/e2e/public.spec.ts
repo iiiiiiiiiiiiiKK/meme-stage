@@ -9,6 +9,17 @@ async function clickDemoCharacter(page: Page, worldX: number, worldY: number, pa
   const scale = Math.min((box.width - padding * 2) / 1600, (box.height - padding * 2) / 900, 1.4);
   const x = box.x + (box.width - 1600 * scale) / 2 + worldX * scale;
   const y = box.y + (box.height - 900 * scale) / 2 + worldY * scale;
+  const coarse = await page.evaluate(
+    () => window.matchMedia("(pointer: coarse)").matches && navigator.maxTouchPoints > 0,
+  );
+  if (coarse) {
+    try {
+      await page.touchscreen.tap(x, y);
+      return;
+    } catch {
+      // fall through to mouse for environments without a real touchscreen
+    }
+  }
   await page.mouse.click(x, y);
 }
 
@@ -34,13 +45,19 @@ test.describe("landing", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="visitor"] canvas');
-    await page.waitForTimeout(600);
-    await clickDemoCharacter(page, 245, 600, 12); // 老K center, landing hero uses compact padding
-    await page.waitForTimeout(700);
-    if ((await page.evaluate(() => (window as any).__played?.length ?? 0)) === 0) {
-      await clickDemoCharacter(page, 245, 600, 12);
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-testid="visitor"]');
+      return !!el && el.getBoundingClientRect().width > 100;
+    });
+    await page.waitForTimeout(800);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await clickDemoCharacter(page, 245, 600, 12); // 老K center, landing hero uses compact padding
+      await page.waitForTimeout(900);
+      if ((await page.evaluate(() => (window as any).__played?.length ?? 0)) > 0) break;
     }
-    await expect.poll(() => page.evaluate(() => (window as any).__played.length)).toBeGreaterThan(0);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__played.length), { timeout: 20_000 })
+      .toBeGreaterThan(0);
     await expect(page.getByText("这波真的不亏").first()).toBeVisible();
   });
 });

@@ -26,6 +26,11 @@ import { estimateTextHeight } from "../canvas/ElementNode";
 import { canvasPresetFor } from "../../lib/export";
 import { DEFAULT_BUBBLE_PLACEMENT, createText } from "../../lib/defaults";
 import { AZURE_STYLE_LABELS, AZURE_VOICES, findAzureVoice } from "../../lib/azureVoices";
+import {
+  estimateSpeechSeconds,
+  isDeviceSpeechSupported,
+  listDeviceVoices,
+} from "../../lib/deviceSpeech";
 import type { BubblePlacement, VoiceClip } from "../../lib/types";
 
 const BUBBLE_ANCHORS: { id: BubblePlacement["anchor"]; label: string }[] = [
@@ -307,10 +312,38 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
   const [ttsLang, setTtsLang] = useState("zh");
   const [ttsSpeed, setTtsSpeed] = useState(1);
   const [ttsBusy, setTtsBusy] = useState(false);
-  const [ttsProvider, setTtsProvider] = useState<"melotts" | "azure">("melotts");
+  const [ttsProvider, setTtsProvider] = useState<"melotts" | "azure" | "device">("melotts");
   const [azureVoiceId, setAzureVoiceId] = useState("zh-CN-XiaoxiaoNeural");
   const [azureStyle, setAzureStyle] = useState("general");
   const [ttsConfig, setTtsConfig] = useState<{ melotts: boolean; azure: boolean } | null>(null);
+  const deviceSupported = isDeviceSpeechSupported();
+  const [deviceVoices, setDeviceVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [deviceVoiceURI, setDeviceVoiceURI] = useState("");
+  const [devicePitch, setDevicePitch] = useState(1);
+
+  useEffect(() => {
+    void api
+      .ttsConfig()
+      .then(setTtsConfig)
+      .catch(() => setTtsConfig({ melotts: true, azure: false }));
+  }, []);
+
+  useEffect(() => {
+    if (!deviceSupported) return;
+    const synth = window.speechSynthesis;
+    const load = () => {
+      const voices = listDeviceVoices();
+      setDeviceVoices(voices);
+      setDeviceVoiceURI((current) => {
+        if (current) return current;
+        const preferred = voices.find((voice) => voice.lang.toLowerCase().startsWith("zh")) ?? voices[0];
+        return preferred?.voiceURI ?? "";
+      });
+    };
+    load();
+    synth.addEventListener?.("voiceschanged", load);
+    return () => synth.removeEventListener?.("voiceschanged", load);
+  }, [deviceSupported]);
 
   useEffect(() => {
     void api
@@ -371,6 +404,30 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
     }
     setTtsBusy(true);
     try {
+      if (ttsProvider === "device") {
+        const voice = deviceVoices.find((item) => item.voiceURI === deviceVoiceURI);
+        const clip: VoiceClip = {
+          id: `dev_${Math.random().toString(36).slice(2, 10)}`,
+          name: `设备朗读 · ${text.slice(0, 12)}`,
+          url: "",
+          duration: estimateSpeechSeconds(text, ttsSpeed),
+          volume: 1,
+          line: text,
+          source: "device",
+          text,
+          lang: voice?.lang ?? "zh-CN",
+          rate: ttsSpeed,
+          pitch: devicePitch,
+          ...(voice ? { voiceURI: voice.voiceURI } : {}),
+        };
+        appendClip(clip, true);
+        toast("已添加浏览器朗读语音（由访客设备发声）", "success");
+        setPreviewingId(clip.id);
+        await audioEngine.play(clip, "single");
+        setPreviewingId((current) => (current === clip.id ? null : current));
+        return;
+      }
+
       const asset =
         ttsProvider === "azure"
           ? await api.tts({
@@ -500,6 +557,10 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
                     <span className="shrink-0 rounded bg-electric/20 px-1 text-[8px] font-semibold text-electric">
                       TTS
                     </span>
+                  ) : clip.source === "device" ? (
+                    <span className="shrink-0 rounded bg-neon/15 px-1 text-[8px] font-semibold text-neon">
+                      设备
+                    </span>
                   ) : null}
                   {clip.rate && clip.rate !== 1 ? (
                     <span className="shrink-0 text-[8px] text-mute">{clip.rate}x</span>
@@ -619,11 +680,22 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
             <Field label="语音引擎">
               <Select
                 value={ttsProvider}
-                onChange={(e) => setTtsProvider(e.target.value === "azure" ? "azure" : "melotts")}
+                onChange={(e) =>
+                  setTtsProvider(
+                    e.target.value === "azure"
+                      ? "azure"
+                      : e.target.value === "device"
+                        ? "device"
+                        : "melotts",
+                  )
+                }
               >
                 <option value="melotts">Cloudflare MeloTTS · 免费</option>
                 <option value="azure" disabled={!ttsConfig?.azure}>
                   Microsoft Azure{ttsConfig?.azure ? " · 官方免费额度" : " · 未配置"}
+                </option>
+                <option value="device" disabled={!deviceSupported}>
+                  浏览器自带{deviceSupported ? " · 免费" : " · 当前浏览器不支持"}
                 </option>
               </Select>
             </Field>
@@ -668,6 +740,39 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
                   微软官方免费 F0：50 万字符/月。需要在 Pages 配置 AZURE_SPEECH_KEY / AZURE_SPEECH_REGION。
                 </p>
               </>
+            ) : ttsProvider === "device" ? (
+              <>
+                <Field label="系统音色" hint="取决于访客设备">
+                  <Select value={deviceVoiceURI} onChange={(e) => setDeviceVoiceURI(e.target.value)}>
+                    {deviceVoices.length === 0 ? <option value="">使用系统默认声音</option> : null}
+                    {deviceVoices.map((voice) => (
+                      <option key={voice.voiceURI} value={voice.voiceURI}>
+                        {voice.name} ({voice.lang})
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="语速">
+                    <Select value={String(ttsSpeed)} onChange={(e) => setTtsSpeed(Number(e.target.value))}>
+                      <option value="0.8">0.8x 慢</option>
+                      <option value="1">1.0x 正常</option>
+                      <option value="1.2">1.2x 快</option>
+                      <option value="1.5">1.5x 很快</option>
+                    </Select>
+                  </Field>
+                  <Field label="音调">
+                    <Select value={String(devicePitch)} onChange={(e) => setDevicePitch(Number(e.target.value))}>
+                      <option value="0.8">0.8 低</option>
+                      <option value="1">1.0 正常</option>
+                      <option value="1.2">1.2 高</option>
+                    </Select>
+                  </Field>
+                </div>
+                <p className="text-[9px] leading-relaxed text-mute">
+                  由访客浏览器朗读，完全免费、不占存储。音色会因手机/电脑不同而不同，适合“能听见就行”的场景。
+                </p>
+              </>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2">
@@ -701,7 +806,12 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
                 variant="primary"
                 icon="sparkles"
                 className="flex-1"
-                disabled={ttsBusy || !ttsText.trim() || (ttsProvider === "azure" && !ttsConfig?.azure)}
+                disabled={
+                  ttsBusy ||
+                  !ttsText.trim() ||
+                  (ttsProvider === "azure" && !ttsConfig?.azure) ||
+                  (ttsProvider === "device" && !deviceSupported)
+                }
                 onClick={() => void generateSpeech()}
               >
                 {ttsBusy ? "生成中…" : "生成并添加"}

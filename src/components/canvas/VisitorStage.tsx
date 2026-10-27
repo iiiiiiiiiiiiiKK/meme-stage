@@ -138,7 +138,7 @@ export function VisitorStage({
         return picked.clip;
       },
       playVoice: async (_el: CanvasElement, clip: VoiceClip) => {
-        if (!clip?.url) return;
+        if (clip.source !== "device" && !clip.url) return;
         await audioEngine.play(clip, projectRef.current.settings.audioMode);
       },
       showBubble: (el, text, holdSeconds) => {
