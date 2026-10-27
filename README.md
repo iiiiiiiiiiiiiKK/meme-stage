@@ -28,7 +28,7 @@
 
 ## 截图
 
-| 首页 · 可直接点人物试听 | 创作工作台 · 20 人物 |
+| 首页 · 可直接点人物试听 | 创作工作台 · 50 人物 |
 | --- | --- |
 | ![首页](docs/screenshots/home.png) | ![编辑器](docs/screenshots/editor.png) |
 
