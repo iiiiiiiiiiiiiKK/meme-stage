@@ -1,10 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-/** the demo project is 1600x900; VisitorStage fits it with 24px padding (max 1.4x) */
-async function clickDemoCharacter(page: Page, worldX: number, worldY: number) {
-  const box = await page.locator('[data-testid="visitor"]').boundingBox();
+/** the demo project is 1600x900; VisitorStage fits it with configurable padding (max 1.4x) */
+async function clickDemoCharacter(page: Page, worldX: number, worldY: number, padding = 48) {
+  const visitor = page.locator('[data-testid="visitor"]').first();
+  await visitor.scrollIntoViewIfNeeded();
+  const box = await visitor.boundingBox();
   if (!box) throw new Error("visitor stage not found");
-  const scale = Math.min((box.width - 48) / 1600, (box.height - 48) / 900, 1.4);
+  const scale = Math.min((box.width - padding * 2) / 1600, (box.height - padding * 2) / 900, 1.4);
   const x = box.x + (box.width - 1600 * scale) / 2 + worldX * scale;
   const y = box.y + (box.height - 900 * scale) / 2 + worldY * scale;
   await page.mouse.click(x, y);
@@ -32,7 +34,7 @@ test.describe("landing", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="visitor"] canvas');
-    await clickDemoCharacter(page, 245, 600); // 老K center
+    await clickDemoCharacter(page, 245, 600, 12); // 老K center, landing hero uses compact padding
     await expect.poll(() => page.evaluate(() => (window as any).__played.length)).toBeGreaterThan(0);
     await expect(page.getByText("这波真的不亏").first()).toBeVisible();
   });

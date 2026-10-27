@@ -103,6 +103,8 @@
 
 ## 快速开始
 
+需要 **Node.js 22+**（本项目在 Node 24 + npm 11 上开发）。
+
 ```bash
 # 1. 安装
 npm install
@@ -264,7 +266,7 @@ npm test
 npm run test:e2e       # Playwright: 桌面 + 手机（Pixel 7 视口）公共页面
 ```
 
-`npm run test:e2e` 在 2026-10-27 的结果：**8 / 8 通过**（首页、示例语音、发布页、404 页 × 桌面/手机）。
+`npm run test:e2e` 在 2026-10-27 的结果：**12 / 12 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 404）。
 
 完整创作闭环用下面的脚本复跑：
 
@@ -285,6 +287,7 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 新建互动事件 | ✅ 触发者、动作、下一事件写入作品 JSON |
 | 发布 + 分享链接 | ✅ `/p/person-01-20-…` 可访问，封面写入 R2 |
 | 手机打开分享链接 | ✅ 390×844，无横向溢出 |
+| iPhone 13 Safari（WebKit） | ✅ 全部页面无横向溢出，点击出气泡、音频触发 |
 | 手机点击人物 | ✅ 气泡出现，音频真实触发 |
 | 多选批量移动 | ✅ 两个人物同位移 (55, 27) |
 | 锁定后拖动 | ✅ 位置不变 |
@@ -296,6 +299,9 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 未授权读取私有作品 | ✅ 404 |
 | 伪造 PNG 上传 | ✅ 415（文件头嗅探） |
 | 路径穿越 / 非法文件 ID | ✅ 404 |
+| 断网自动保存 | ✅ 显示「保存失败」，本地草稿保留 2 个文字元素；恢复网络后自动「已保存」 |
+| 音频加载失败 | ✅ 明确提示「老K · 这波不亏」播放失败，不会卡住互动 |
+| 上传不支持的文件 | ✅ 明确提示，导入弹窗保持打开 |
 | 控制台错误 | ✅ 最终回归 0 个 |
 
 > 注：本机 Windows 环境的 `workerd` 无法启动（本地 D1/Pages dev 崩溃），因此端到端测试直接跑在 Cloudflare Pages 生产环境，构建与函数打包由 wrangler 完成。

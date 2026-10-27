@@ -160,8 +160,8 @@ export function PublishedPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#050507]">
-      <div className="pointer-events-none absolute inset-0 z-0">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#050507]">
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         <div className="absolute left-1/3 top-0 h-72 w-72 rounded-full bg-electric/10 blur-[100px]" />
         <div className="absolute bottom-0 right-1/4 h-64 w-64 rounded-full bg-hot/10 blur-[100px]" />
       </div>

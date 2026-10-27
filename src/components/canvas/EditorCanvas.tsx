@@ -65,6 +65,8 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>(function EditorCanvas
   const selection = useEditor((s) => s.selection);
   const viewport = useEditor((s) => s.viewport);
   const fitTick = useEditor((s) => s.fitTick);
+  const snapEnabled = useEditor((s) => s.snapEnabled);
+  const showGrid = useEditor((s) => s.showGrid);
   const focusTick = useEditor((s) => s.focusTick);
   const setViewport = useEditor((s) => s.setViewport);
   const select = useEditor((s) => s.select);
@@ -561,7 +563,11 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>(function EditorCanvas
   const cursor = spacePressed || gesture.current?.type === "pan" ? "cursor-grab" : "cursor-default";
 
   return (
-    <div ref={containerRef} className={`relative h-full w-full overflow-hidden grid-bg ${cursor}`} data-testid="canvas">
+    <div
+      ref={containerRef}
+      className={`relative h-full w-full overflow-hidden ${showGrid ? "grid-bg" : ""} ${cursor}`}
+      data-testid="canvas"
+    >
       {size.width > 0 ? (
         <Stage
           ref={stageRef}
@@ -736,6 +742,19 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>(function EditorCanvas
               fitViewport({ width: size.width, height: size.height }, b, Math.min(size.width, size.height) * 0.28, 1.6),
             );
           }}
+        />
+        <div className="mx-1 h-5 w-px bg-line" />
+        <IconButton
+          icon="magnet"
+          label={snapEnabled ? "吸附已开启" : "吸附已关闭"}
+          active={snapEnabled}
+          onClick={() => useEditor.getState().setSnap(!snapEnabled)}
+        />
+        <IconButton
+          icon="grid"
+          label={showGrid ? "隐藏网格" : "显示网格"}
+          active={showGrid}
+          onClick={() => useEditor.getState().setGrid(!showGrid)}
         />
       </div>
 
