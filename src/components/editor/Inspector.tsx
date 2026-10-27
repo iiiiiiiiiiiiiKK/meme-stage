@@ -24,6 +24,16 @@ import { audioEngine } from "../../lib/audio";
 import { api } from "../../lib/api";
 import { estimateTextHeight } from "../canvas/ElementNode";
 import { canvasPresetFor } from "../../lib/export";
+import { DEFAULT_BUBBLE_PLACEMENT, createText } from "../../lib/defaults";
+import type { BubblePlacement } from "../../lib/types";
+
+const BUBBLE_ANCHORS: { id: BubblePlacement["anchor"]; label: string }[] = [
+  { id: "auto", label: "自动" },
+  { id: "top", label: "上方" },
+  { id: "bottom", label: "下方" },
+  { id: "left", label: "左侧" },
+  { id: "right", label: "右侧" },
+];
 
 export function Inspector() {
   const project = useEditor((s) => s.project);
@@ -278,6 +288,16 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
   const assets = useAssets((s) => s.items);
   const loadAssets = useAssets((s) => s.load);
   const character = el.character!;
+  const placement = character.bubblePlacement ?? DEFAULT_BUBBLE_PLACEMENT;
+  const updatePlacement = (patch: Partial<BubblePlacement>, key: string) =>
+    updateCharacter(
+      el.id,
+      (c) => {
+        c.bubblePlacement = { ...(c.bubblePlacement ?? DEFAULT_BUBBLE_PLACEMENT), ...patch };
+      },
+      true,
+      `bubblepos:${el.id}:${key}`,
+    );
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const voiceInput = useRef<HTMLInputElement | null>(null);
   const [binding, setBinding] = useState(false);
@@ -560,6 +580,96 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
             }
           />
         </Field>
+        <Button
+          size="sm"
+          variant="outline"
+          icon="text"
+          className="w-full"
+          onClick={() => {
+            const content =
+              character.line ||
+              character.voices.find((clip) => clip.line?.trim())?.line ||
+              "在这里输入台词";
+            const width = Math.min(520, Math.max(240, placement.maxWidth));
+            const textEl = createText({
+              content,
+              width,
+              height: estimateTextHeight(content, width, character.bubble.fontSize, character.bubble.padding),
+              x: Math.round(el.x + el.width / 2 - width / 2),
+              y: Math.round(el.y - 24 - estimateTextHeight(content, width, character.bubble.fontSize, character.bubble.padding)),
+              z: el.z + 1,
+            });
+            if (textEl.text) textEl.text.style = { ...character.bubble };
+            useEditor.getState().addElements([textEl]);
+            toast("已生成文字层，可以像人物一样自由拖动", "success");
+          }}
+        >
+          把台词放到画布（可自由拖动）
+        </Button>
+      </Section>
+
+      <Section title="气泡位置">
+        <div className="flex flex-wrap gap-1">
+          {BUBBLE_ANCHORS.map((anchor) => (
+            <button
+              key={anchor.id}
+              type="button"
+              onClick={() => updatePlacement({ anchor: anchor.id }, "anchor")}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors",
+                placement.anchor === anchor.id
+                  ? "border-neon/60 bg-neon/15 text-neon"
+                  : "border-line bg-ink text-mute hover:text-paper",
+              )}
+            >
+              {anchor.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="X 偏移" hint="画布像素">
+            <NumberInput
+              value={placement.offsetX}
+              min={-3000}
+              max={3000}
+              step={10}
+              onChange={(offsetX) => updatePlacement({ offsetX }, "x")}
+            />
+          </Field>
+          <Field label="Y 偏移" hint="画布像素">
+            <NumberInput
+              value={placement.offsetY}
+              min={-3000}
+              max={3000}
+              step={10}
+              onChange={(offsetY) => updatePlacement({ offsetY }, "y")}
+            />
+          </Field>
+        </div>
+        <Field label="气泡最大宽度" hint={`${placement.maxWidth}px`}>
+          <Slider
+            value={placement.maxWidth}
+            min={140}
+            max={640}
+            step={10}
+            label={`${placement.maxWidth}`}
+            onChange={(maxWidth) => updatePlacement({ maxWidth }, "w")}
+          />
+        </Field>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full"
+          onClick={() => {
+            updatePlacement({ anchor: "auto", offsetX: 0, offsetY: 0, maxWidth: 300 }, "reset");
+            toast("气泡位置已重置", "info");
+          }}
+        >
+          重置气泡位置
+        </Button>
+        <p className="rounded-md border border-electric/30 bg-electric/5 px-2 py-1.5 text-[10px] leading-relaxed text-paper">
+          更直观的方式：点顶部「预览」，点一下人物让气泡出现，然后<b>直接拖动气泡</b>到想要的位置，松手即保存。
+        </p>
       </Section>
 
       <Section title="气泡样式" defaultOpen={false}>

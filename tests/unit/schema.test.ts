@@ -145,6 +145,32 @@ describe("project schema", () => {
     expect(normalizeProject(project).elements[0].character!.voices).toHaveLength(20);
   });
 
+  it("normalises bubble placement and falls back to safe defaults", () => {
+    const project = baseProject();
+    const character = project.elements[0].character as unknown as Record<string, unknown>;
+    delete character.bubblePlacement;
+    const normalized = normalizeProject(project);
+    expect(normalized.elements[0].character!.bubblePlacement).toEqual({
+      anchor: "auto",
+      offsetX: 0,
+      offsetY: 0,
+      maxWidth: 300,
+    });
+
+    const raw = baseProject() as unknown as { elements: { character: Record<string, unknown> }[] };
+    raw.elements[0].character.bubblePlacement = {
+      anchor: "evil",
+      offsetX: 99999,
+      offsetY: -99999,
+      maxWidth: 5000,
+    };
+    const clamped = normalizeProject(raw).elements[0].character!.bubblePlacement;
+    expect(clamped.anchor).toBe("auto");
+    expect(clamped.offsetX).toBeLessThanOrEqual(5000);
+    expect(clamped.offsetY).toBeGreaterThanOrEqual(-5000);
+    expect(clamped.maxWidth).toBe(640);
+  });
+
   it("serialises to a stable JSON document", () => {
     const project = baseProject();
     const { json, project: normalized } = normalizeForStorage(project);

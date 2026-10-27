@@ -320,7 +320,7 @@ export function EditorPage() {
             <Button size="sm" variant="ghost" icon="chevron-left" onClick={() => setPreview({ open: false, triggerId: null })}>
               退出预览
             </Button>
-            <span className="text-[10px] text-mute">访客看到的就是这样 · 声音需要点击触发</span>
+            <span className="text-[10px] text-mute">访客看到的就是这样 · 点人物出声音 · 气泡可直接拖动</span>
             <div className="ml-auto flex items-center gap-1">
               <Button
                 size="sm"
@@ -340,6 +340,16 @@ export function EditorPage() {
             <VisitorStage
               project={liveProject ?? useEditor.getState().project}
               autoTriggerId={preview.triggerId}
+              onBubbleMove={(elementId, placement) =>
+                useEditor.getState().updateCharacter(
+                  elementId,
+                  (character) => {
+                    character.bubblePlacement = placement;
+                  },
+                  true,
+                  `bubblepos:${elementId}`,
+                )
+              }
               onError={(message) => {
                 setAudioError(message);
                 setTimeout(() => setAudioError(null), 4200);

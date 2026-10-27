@@ -107,6 +107,13 @@ export const BUBBLE_PRESETS: Record<string, BubbleStyle> = {
   },
 };
 
+export const DEFAULT_BUBBLE_PLACEMENT = {
+  anchor: "auto" as const,
+  offsetX: 0,
+  offsetY: 0,
+  maxWidth: 300,
+};
+
 export function makeBubble(preset: keyof typeof BUBBLE_PRESETS = "comic"): BubbleStyle {
   return { ...BUBBLE_PRESETS[preset] };
 }
@@ -183,6 +190,7 @@ export function createCharacter(args: {
       voiceMode: "cycle",
       line: "",
       bubble: makeBubble("comic"),
+      bubblePlacement: { ...DEFAULT_BUBBLE_PLACEMENT },
       effects: { outline: 0, shadow: true, glow: null, shake: false },
     },
   };
@@ -255,6 +263,7 @@ export function makeCharacterData(args: {
     voiceMode: "cycle",
     line: "",
     bubble: makeBubble("comic"),
+    bubblePlacement: { ...DEFAULT_BUBBLE_PLACEMENT },
     effects: { outline: 0, shadow: true, glow: null, shake: false },
   };
 }

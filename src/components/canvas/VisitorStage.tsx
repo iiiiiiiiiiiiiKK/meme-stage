@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Stage, Layer, Rect } from "react-konva";
 import Konva from "konva";
 import { ElementNode, type NodeRegistry, type PulseSignal } from "./ElementNode";
-import type { BubbleStyle, CanvasElement, ProjectData, VoiceClip } from "../../lib/types";
+import type { BubblePlacement, BubbleStyle, CanvasElement, ProjectData, VoiceClip } from "../../lib/types";
 import { InteractionRunner, type RuntimeHooks } from "../../lib/engine";
 import { audioEngine } from "../../lib/audio";
 import { chooseVoice } from "../../lib/voice";
+import { bubbleAnchorPoint } from "../../lib/bubblePosition";
+import { DEFAULT_BUBBLE_PLACEMENT } from "../../lib/defaults";
 import { fitViewport, frameBounds, worldToScreen, zoomAt, type Viewport } from "../../lib/geometry";
 import { makeBubble } from "../../lib/defaults";
 import { Icon } from "../Icon";
@@ -24,6 +26,9 @@ interface BubbleView extends BubbleItem {
   y: number;
   below: boolean;
   maxWidth: number;
+  tx: string;
+  ty: string;
+  placement: BubblePlacement | undefined;
 }
 
 export interface VisitorStageProps {
@@ -31,6 +36,8 @@ export interface VisitorStageProps {
   compact?: boolean;
   allowViewport?: boolean;
   autoTriggerId?: string | null;
+  /** editor preview passes this so bubbles can be dragged into place */
+  onBubbleMove?: (elementId: string, placement: BubblePlacement) => void;
   onFirstInteraction?: () => void;
   onError?: (message: string) => void;
   className?: string;
@@ -41,6 +48,7 @@ export function VisitorStage({
   compact = false,
   allowViewport = true,
   autoTriggerId = null,
+  onBubbleMove,
   onFirstInteraction,
   onError,
   className,
@@ -58,6 +66,15 @@ export function VisitorStage({
   const [hintVisible, setHintVisible] = useState(true);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const voiceCursors = useRef<Map<string, number>>(new Map());
+  const bubbleDrag = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    ox: number;
+    oy: number;
+    placement: BubblePlacement;
+  } | null>(null);
+  const [draggingBubble, setDraggingBubble] = useState<string | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
   const viewportRef = useRef(viewport);
@@ -190,6 +207,60 @@ export function VisitorStage({
     return () => clearTimeout(timer);
   }, [autoTriggerId, trigger]);
 
+  useEffect(() => {
+    if (!draggingBubble) return;
+    const onMove = (e: PointerEvent) => {
+      const drag = bubbleDrag.current;
+      if (!drag) return;
+      const dx = (e.clientX - drag.startX) / viewportRef.current.scale;
+      const dy = (e.clientY - drag.startY) / viewportRef.current.scale;
+      onBubbleMove?.(drag.id, {
+        ...drag.placement,
+        offsetX: Math.round(drag.ox + dx),
+        offsetY: Math.round(drag.oy + dy),
+      });
+    };
+    const onUp = () => {
+      const drag = bubbleDrag.current;
+      if (drag) {
+        const existing = timers.current.get(drag.id);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+          setBubbles((prev) => prev.filter((b) => b.elementId !== drag.id));
+          timers.current.delete(drag.id);
+        }, 2600);
+        timers.current.set(drag.id, timer);
+      }
+      bubbleDrag.current = null;
+      setDraggingBubble(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [draggingBubble, onBubbleMove]);
+
+  const startBubbleDrag = (e: ReactPointerEvent, view: BubbleView) => {
+    if (!onBubbleMove) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const timer = timers.current.get(view.elementId);
+    if (timer) clearTimeout(timer);
+    timers.current.delete(view.elementId);
+    const placement = view.placement ?? { ...DEFAULT_BUBBLE_PLACEMENT };
+    bubbleDrag.current = {
+      id: view.elementId,
+      startX: e.clientX,
+      startY: e.clientY,
+      ox: placement.offsetX,
+      oy: placement.offsetY,
+      placement,
+    };
+    setDraggingBubble(view.elementId);
+  };
+
   /* --------------------------------------------------------- viewport i/o */
   const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     if (!allowViewport) return;
@@ -262,17 +333,35 @@ export function VisitorStage({
     return bubbles
       .map((bubble) => {
         const el = project.elements.find((el) => el.id === bubble.elementId);
-        if (!el) return null;
+        if (!el || el.type !== "character") return null;
         const offset = offsets[el.id] ?? { x: 0, y: 0 };
-        const top = worldToScreen(viewport, el.x + offset.x + el.width / 2, el.y + offset.y);
-        const bottom = worldToScreen(
-          viewport,
-          el.x + offset.x + el.width / 2,
-          el.y + offset.y + el.height,
+        const placement = el.character?.bubblePlacement;
+        const auto = !placement || placement.anchor === "auto";
+        let anchor = bubbleAnchorPoint(el, placement, offset, false);
+        let screen = worldToScreen(viewport, anchor.x, anchor.y);
+        // only auto-flip when the author has not explicitly offset the bubble
+        if (auto && (placement?.offsetY ?? 0) === 0 && screen.y < 150) {
+          anchor = bubbleAnchorPoint(el, placement, offset, true);
+          screen = worldToScreen(viewport, anchor.x, anchor.y);
+        }
+        const gap = 8;
+        const x = screen.x + (anchor.tx === "-100%" ? -gap : anchor.tx === "0%" ? gap : 0);
+        const y = screen.y + (anchor.ty === "-100%" ? -gap : anchor.ty === "0%" ? gap : 0);
+        const maxWidth = Math.min(
+          placement?.maxWidth ?? 300,
+          Math.max(160, (size.width || 360) - 24),
         );
-        const placeBelow = top.y < 150;
-        const maxWidth = Math.min(300, Math.max(180, (size.width || 360) * 0.62));
-        return { ...bubble, x: top.x, y: placeBelow ? bottom.y + 14 : top.y - 14, below: placeBelow, maxWidth };
+        return {
+          ...bubble,
+          x,
+          y,
+          below: anchor.below,
+          maxWidth,
+          tx: anchor.tx,
+          ty: anchor.ty,
+          elementId: el.id,
+          placement,
+        };
       })
       .filter((item): item is BubbleView => item !== null);
   }, [bubbles, project.elements, viewport, offsets, size.width]);
@@ -339,9 +428,11 @@ export function VisitorStage({
           <Bubble
             key={bubble.key}
             bubble={bubble}
-            below={bubble.below}
             maxWidth={bubble.maxWidth}
             compact={compact}
+            draggable={!!onBubbleMove}
+            dragging={draggingBubble === bubble.elementId}
+            onPointerDown={(e) => startBubbleDrag(e, bubble)}
           />
         ) : null,
       )}
@@ -417,62 +508,80 @@ function hexToRgba(hex: string, alpha: number): string {
 
 function Bubble({
   bubble,
-  below,
   maxWidth,
   compact,
+  draggable,
+  dragging,
+  onPointerDown,
 }: {
   bubble: BubbleView;
-  below: boolean;
   maxWidth: number;
   compact: boolean;
+  draggable?: boolean;
+  dragging?: boolean;
+  onPointerDown?: (event: ReactPointerEvent) => void;
 }) {
   const { style } = bubble;
   const fontSize = Math.min(compact ? 15 : 18, Math.max(12, style.fontSize * 0.55));
   const radius = Math.min(style.radius, 20);
   return (
     <div
-      className="bubble-in pointer-events-none absolute z-10"
+      className={`absolute z-10 ${draggable ? "pointer-events-auto cursor-move touch-none" : "pointer-events-none"}`}
       style={{
         left: bubble.x,
         top: bubble.y,
-        transform: `translate(-50%, ${below ? "0" : "-100%"})`,
+        transform: `translate(${bubble.tx}, ${bubble.ty})`,
         maxWidth,
       }}
+      onPointerDown={onPointerDown}
+      title={draggable ? "拖动气泡，调整台词位置" : undefined}
     >
-      <div
-        className="relative px-3 py-2 shadow-[3px_3px_0_0_rgba(0,0,0,0.85)]"
-        style={{
-          background: style.bg,
-          color: style.fg,
-          border: style.borderWidth > 0 ? `${Math.min(4, Math.max(2, style.borderWidth))}px solid ${style.border}` : "none",
-          borderRadius: radius,
-          fontSize,
-          fontWeight: style.bold ? 800 : 500,
-          fontStyle: style.italic ? "italic" : "normal",
-          lineHeight: 1.35,
-          textAlign: "center",
-        }}
-      >
-        {bubble.name && !compact ? (
-          <div
-            className="mb-0.5 text-[9px] font-bold uppercase tracking-widest"
-            style={{ color: hexToRgba(style.fg, 0.55) }}
-          >
-            {bubble.name}
-          </div>
-        ) : null}
-        {bubble.text}
-        {style.tail === "bottom" ? (
-          <span
-            className="absolute left-1/2 h-3 w-3 -translate-x-1/2 rotate-45"
-            style={{
-              bottom: -7,
-              background: style.bg,
-              borderRight: style.borderWidth > 0 ? `2px solid ${style.border}` : "none",
-              borderBottom: style.borderWidth > 0 ? `2px solid ${style.border}` : "none",
-            }}
-          />
-        ) : null}
+      <div className="bubble-in">
+        <div
+          className="relative px-3 py-2 shadow-[3px_3px_0_0_rgba(0,0,0,0.85)]"
+          style={{
+            background: style.bg,
+            color: style.fg,
+            border:
+              style.borderWidth > 0
+                ? `${Math.min(4, Math.max(2, style.borderWidth))}px solid ${style.border}`
+                : "none",
+            borderRadius: radius,
+            fontSize,
+            fontWeight: style.bold ? 800 : 500,
+            fontStyle: style.italic ? "italic" : "normal",
+            lineHeight: 1.35,
+            textAlign: "center",
+            outline: dragging ? "2px dashed #b6ff3c" : undefined,
+            outlineOffset: 3,
+          }}
+        >
+          {bubble.name && !compact ? (
+            <div
+              className="mb-0.5 text-[9px] font-bold uppercase tracking-widest"
+              style={{ color: hexToRgba(style.fg, 0.55) }}
+            >
+              {bubble.name}
+            </div>
+          ) : null}
+          {bubble.text}
+          {style.tail === "bottom" ? (
+            <span
+              className="absolute left-1/2 h-3 w-3 -translate-x-1/2 rotate-45"
+              style={{
+                bottom: -7,
+                background: style.bg,
+                borderRight: style.borderWidth > 0 ? `2px solid ${style.border}` : "none",
+                borderBottom: style.borderWidth > 0 ? `2px solid ${style.border}` : "none",
+              }}
+            />
+          ) : null}
+          {draggable ? (
+            <span className="absolute -right-2.5 -top-2.5 grid h-5 w-5 place-items-center rounded-full border border-neon/60 bg-ink text-neon">
+              <Icon name="move" size={10} />
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   );

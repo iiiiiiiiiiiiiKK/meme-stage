@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-41%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-47%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -36,9 +36,9 @@
 | --- | --- |
 | ![批量导入](docs/screenshots/import.png) | ![发布页](docs/screenshots/published.png) |
 
-| 多语音人物 · 每段独立台词与音量 |
-| --- |
-| ![多语音](docs/screenshots/editor-voices.png) |
+| 多语音人物 · 每段独立台词与音量 | 气泡位置 · 预览里直接拖 |
+| --- | --- |
+| ![多语音](docs/screenshots/editor-voices.png) | ![气泡位置](docs/screenshots/bubble-position.png) |
 
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
@@ -76,6 +76,8 @@
 - 试听、批量添加、删除、从素材库追加。
 - 台词输入 + 6 种气泡预设（漫画 / 纯色 / 思考 / 字幕 / 大字 / 自定义）。
 - 气泡可调底色、文字色、描边色、描边宽度、圆角、内边距、字号、粗体、斜体、尾巴方向、出现动画、停留时长。
+- **气泡位置可调**：自动 / 上方 / 下方 / 左侧 / 右侧锚点 + X/Y 偏移 + 最大宽度；也可以在预览里**直接拖动气泡**，松手即保存。
+- 一键「把台词放到画布」：生成独立的文字层，像人物一样自由拖动、缩放、旋转。
 - 单音频模式（新声音打断旧声音）/ 混音模式，可在作品设置里切换。
 - 音频加载失败、浏览器拦截自动播放、没有绑定语音，都会给出明确提示，不会静默失败。
 - 官方示例：连点「猫猫头」三次，会依次换三段语音和三句不同台词。
@@ -253,7 +255,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（41 个，全部通过）
+### 单元测试（47 个，全部通过）
 
 ```bash
 npm test
@@ -265,6 +267,7 @@ npm test
 - 项目 schema：重复 ID、非法类型、越界数值、`javascript:` / `//evil` URL、颜色注入、事件引用、序列化。
 - 交互运行时：默认反应、顺序执行、并行、事件链、循环保护、缺失语音、快速点击取消、多语音轮换、指定语音播放。
 - 语音选择：顺序轮换、随机不重复、指定片段、单语音、空列表。
+- 气泡定位：默认上方、自动翻转、四种锚点、世界坐标偏移、旧数据默认值。
 - 视口几何：适配、围绕指针缩放、吸附、旋转内容包围盒。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
@@ -273,7 +276,7 @@ npm test
 npm run test:e2e       # Playwright: 桌面 + 手机（Pixel 7 视口）公共页面
 ```
 
-`npm run test:e2e` 在 2026-10-27 的结果：**15 / 15 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 多语音轮换 / 404）。
+`npm run test:e2e` 在 2026-10-27 的结果：**18 / 18 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 多语音轮换 / 气泡锚点 / 404）。
 
 完整创作闭环用下面的脚本复跑：
 
@@ -295,6 +298,9 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 同一人物多语音轮换 | ✅ 猫猫头 3 条语音，连点 3 次换 3 段音频 + 3 句不同台词（桌面 / Pixel / Safari） |
 | 编辑器添加多条语音 | ✅ 一次上传 3 条，列表显示 4 条（含原有 1 条），模式为轮换 |
 | 旧版单语音作品迁移 | ✅ 旧的 `voice` 字段自动迁移为 `voices[]`，发布页仍可播放 |
+| 预览里拖动气泡 | ✅ 拖动 140×-90 px → 世界坐标 (161,-103)，重载后仍保持 |
+| 发布后的气泡位置 | ✅ 访客页气泡位置与编辑器偏移一致（实测误差 0 px） |
+| 台词转画布文字 | ✅ 生成独立文字层，可继续拖动 / 缩放 / 旋转 |
 | 新建互动事件 | ✅ 触发者、动作、下一事件写入作品 JSON |
 | 发布 + 分享链接 | ✅ `/p/person-01-20-…` 可访问，封面写入 R2 |
 | 手机打开分享链接 | ✅ 390×844，无横向溢出 |
@@ -415,7 +421,7 @@ npm run build && npm test
 
 - True infinite canvas: pan, wheel/pinch zoom, marquee + shift multi-select, group drag, rotate/resize, snapping guides, layers, 60-step undo/redo, keyboard shortcuts.
 - Batch import of up to 300 images with client-side WebP compression and six auto-layout modes (no stacking).
-- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), six bubble presets, fully styleable.
+- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), plus draggable speech bubbles with anchor + offset controls and one-click “put this line on the canvas” text layers.
 - Visual interaction editor: trigger → ordered/parallel actions → next event, with loop protection. The preview runs the exact same engine as the published page.
 - Autosave with real status, offline drafts, optimistic revisions, conflict recovery.
 - Publish to `/p/:slug` with an auto-generated 1200×630 Open Graph cover; PNG and JSON export; remix.

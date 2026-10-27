@@ -44,6 +44,18 @@ export interface VoiceClip {
 
 export type VoiceMode = "cycle" | "random";
 
+export type BubbleAnchor = "auto" | "top" | "bottom" | "left" | "right";
+
+/** where a character's speech bubble is attached, in world units */
+export interface BubblePlacement {
+  anchor: BubbleAnchor;
+  /** offset from the anchor point, in canvas world pixels */
+  offsetX: number;
+  offsetY: number;
+  /** max bubble width in screen pixels */
+  maxWidth: number;
+}
+
 export interface CharacterData {
   name: string;
   imageUrl: string;
@@ -55,6 +67,7 @@ export interface CharacterData {
   /** fallback subtitle when the chosen clip has no line */
   line: string;
   bubble: BubbleStyle;
+  bubblePlacement: BubblePlacement;
   effects: {
     outline: number;
     shadow: boolean;

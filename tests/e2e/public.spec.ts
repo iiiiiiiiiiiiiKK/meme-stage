@@ -34,7 +34,12 @@ test.describe("landing", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="visitor"] canvas');
+    await page.waitForTimeout(600);
     await clickDemoCharacter(page, 245, 600, 12); // 老K center, landing hero uses compact padding
+    await page.waitForTimeout(700);
+    if ((await page.evaluate(() => (window as any).__played?.length ?? 0)) === 0) {
+      await clickDemoCharacter(page, 245, 600, 12);
+    }
     await expect.poll(() => page.evaluate(() => (window as any).__played.length)).toBeGreaterThan(0);
     await expect(page.getByText("这波真的不亏").first()).toBeVisible();
   });
@@ -76,6 +81,35 @@ test.describe("published demo", () => {
     expect(clips.some((url) => url.endsWith("voice-cat.wav"))).toBe(true);
     expect(clips.some((url) => url.endsWith("voice-cat2.wav"))).toBe(true);
     expect(clips.some((url) => url.endsWith("voice-cat3.wav"))).toBe(true);
+  });
+
+  test("bubble is anchored above the character, horizontally centred", async ({ page }) => {
+    await page.addInitScript(() => {
+      HTMLMediaElement.prototype.play = function () {
+        setTimeout(() => this.dispatchEvent(new Event("ended")), 80);
+        return Promise.resolve();
+      };
+      HTMLMediaElement.prototype.pause = function () {};
+    });
+    await page.goto("/p/demo", { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="visitor"] canvas');
+    const box = await page.locator('[data-testid="visitor"]').boundingBox();
+    if (!box) throw new Error("no stage");
+    const scale = Math.min((box.width - 48) / 1600, (box.height - 48) / 900, 1.4);
+    const ox = box.x + (box.width - 1600 * scale) / 2;
+    const oy = box.y + (box.height - 900 * scale) / 2;
+
+    await clickDemoCharacter(page, 1380, 630); // 猫猫头
+    const bubble = page.locator(".bubble-in").first();
+    await expect(bubble).toBeVisible();
+    await page.waitForTimeout(500); // let the pop-in animation settle before measuring
+    const rect = await bubble.boundingBox();
+    if (!rect) throw new Error("no bubble");
+
+    const catCenterX = ox + 1380 * scale;
+    const catTop = oy + 470 * scale;
+    expect(Math.abs(rect.x + rect.width / 2 - catCenterX)).toBeLessThan(4);
+    expect(Math.abs(rect.y + rect.height - (catTop - 8))).toBeLessThan(6);
   });
 
   test("404 page is helpful", async ({ page }) => {

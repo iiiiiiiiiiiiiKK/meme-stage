@@ -112,6 +112,10 @@ function element(raw: unknown, index: number): CanvasElement {
     const imageUrl = safeUrl(c.imageUrl);
     if (!imageUrl) throw new ValidationError(`第 ${index + 1} 个人物缺少有效图片`);
     const effects = (c.effects ?? {}) as Record<string, unknown>;
+    const placementRaw = (c.bubblePlacement ?? {}) as Record<string, unknown>;
+    const anchor = ["auto", "top", "bottom", "left", "right"].includes(String(placementRaw.anchor))
+      ? (placementRaw.anchor as NonNullable<CanvasElement["character"]>["bubblePlacement"]["anchor"])
+      : "auto";
     const voices: NonNullable<CanvasElement["character"]>["voices"] = [];
     const seenVoiceIds = new Set<string>();
     const pushVoice = (raw: unknown) => {
@@ -145,6 +149,12 @@ function element(raw: unknown, index: number): CanvasElement {
       assetId: str(c.assetId, 64) || undefined,
       line: str(c.line, LIMITS.line),
       bubble: style(c.bubble, makeBubble("comic")),
+      bubblePlacement: {
+        anchor,
+        offsetX: num(placementRaw.offsetX, 0, -5000, 5000),
+        offsetY: num(placementRaw.offsetY, 0, -5000, 5000),
+        maxWidth: num(placementRaw.maxWidth, 300, 140, 640),
+      },
       effects: {
         outline: num(effects.outline, 0, 0, 12),
         shadow: bool(effects.shadow, true),
