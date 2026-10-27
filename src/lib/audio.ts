@@ -80,6 +80,9 @@ export class AudioEngine {
     }
     audio.src = clip.url;
     audio.volume = Math.max(0, Math.min(1, clip.volume ?? 1));
+    audio.playbackRate = Math.max(0.5, Math.min(2, clip.rate ?? 1));
+    audio.preservesPitch = true;
+    (audio as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = true;
 
     return new Promise<void>((resolve) => {
       let settled = false;

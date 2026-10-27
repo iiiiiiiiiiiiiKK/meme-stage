@@ -85,7 +85,7 @@ export class InteractionRunner {
     const clip = this.hooks.nextVoice(el);
     if (!clip) return;
     const text = clip.line?.trim() || line;
-    const hold = Math.max(el.character?.bubble.hold ?? 2.4, clip.duration || 0);
+    const hold = Math.max(el.character?.bubble.hold ?? 2.4, (clip.duration || 0) / (clip.rate ?? 1));
     if (text) this.hooks.showBubble(el, text, hold);
     await this.hooks.playVoice(el, clip);
     if (myRun !== this.runId) return;
@@ -158,7 +158,10 @@ export class InteractionRunner {
             this.hooks.showBubble(
               el,
               text,
-              Math.max(el.character?.bubble.hold ?? 2.6, clip.duration || 0),
+              Math.max(
+                el.character?.bubble.hold ?? 2.6,
+                (clip.duration || 0) / (clip.rate ?? 1),
+              ),
             );
           }
           await this.hooks.playVoice(el, clip);

@@ -171,6 +171,36 @@ describe("project schema", () => {
     expect(clamped.maxWidth).toBe(640);
   });
 
+  it("keeps text-to-speech metadata on voice clips", () => {
+    const project = baseProject();
+    project.elements[0].character!.voices = [
+      {
+        id: "tts1",
+        name: "文字语音",
+        url: "/api/files/tts",
+        duration: 2.4,
+        volume: 1,
+        line: "你好，世界。",
+        source: "tts",
+        rate: 1.2,
+        lang: "zh",
+      },
+    ];
+    const clip = normalizeProject(project).elements[0].character!.voices[0];
+    expect(clip).toMatchObject({ source: "tts", rate: 1.2, lang: "zh", line: "你好，世界。" });
+  });
+
+  it("clamps playback rate and drops unknown TTS languages", () => {
+    const project = baseProject();
+    project.elements[0].character!.voices = [
+      { id: "a", name: "a", url: "/a.wav", duration: 1, volume: 1, rate: 9, lang: "xx", source: "weird" as never },
+    ];
+    const clip = normalizeProject(project).elements[0].character!.voices[0];
+    expect(clip.rate).toBe(2);
+    expect(clip.lang).toBeUndefined();
+    expect(clip.source).toBeUndefined();
+  });
+
   it("serialises to a stable JSON document", () => {
     const project = baseProject();
     const { json, project: normalized } = normalizeForStorage(project);

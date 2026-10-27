@@ -15,5 +15,8 @@
       "binding": "BUCKET",
       "bucket_name": "kkmd"
     }
-  ]
+  ],
+  "ai": {
+    "binding": "AI"
+  }
 }

@@ -42,6 +42,8 @@ export function sniff(bytes: Uint8Array): SniffResult | null {
   return null;
 }
 
+export const BUCKET_PREFIX = "meme-stage/";
+
 export const SIZE_LIMITS = {
   image: 8 * 1024 * 1024,
   audio: 12 * 1024 * 1024,

@@ -25,7 +25,7 @@ import { api } from "../../lib/api";
 import { estimateTextHeight } from "../canvas/ElementNode";
 import { canvasPresetFor } from "../../lib/export";
 import { DEFAULT_BUBBLE_PLACEMENT, createText } from "../../lib/defaults";
-import type { BubblePlacement } from "../../lib/types";
+import type { BubblePlacement, VoiceClip } from "../../lib/types";
 
 const BUBBLE_ANCHORS: { id: BubblePlacement["anchor"]; label: string }[] = [
   { id: "auto", label: "自动" },
@@ -301,6 +301,11 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const voiceInput = useRef<HTMLInputElement | null>(null);
   const [binding, setBinding] = useState(false);
+  const [ttsOpen, setTtsOpen] = useState(false);
+  const [ttsText, setTtsText] = useState(character.line || "");
+  const [ttsLang, setTtsLang] = useState("zh");
+  const [ttsSpeed, setTtsSpeed] = useState(1);
+  const [ttsBusy, setTtsBusy] = useState(false);
 
   useEffect(() => {
     void loadAssets();
@@ -319,8 +324,7 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
     );
   };
 
-  const uploadVoices = async (files: File[]) => {
-    if (files.length === 0) return;
+  const uploadVoices = async (files: File[]) => {    if (files.length === 0) return;
     setBinding(true);
     let added = 0;
     try {
@@ -342,6 +346,38 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
       toast(error instanceof Error ? error.message : "语音上传失败", "error");
     } finally {
       setBinding(false);
+    }
+  };
+
+  const generateSpeech = async () => {
+    const text = ttsText.trim();
+    if (!text) {
+      toast("先输入要朗读的文字", "info");
+      return;
+    }
+    setTtsBusy(true);
+    try {
+      const asset = await api.tts({ text, lang: ttsLang, speed: ttsSpeed });
+      const clip: VoiceClip = {
+        id: asset.id,
+        name: asset.name,
+        url: asset.url,
+        duration: asset.duration ?? 0,
+        volume: 1,
+        line: text,
+        source: "tts",
+        lang: ttsLang,
+        ...(ttsSpeed !== 1 ? { rate: ttsSpeed } : {}),
+      };
+      appendClip(clip, true);
+      toast("语音已生成并添加，正在试听", "success");
+      setPreviewingId(asset.id);
+      await audioEngine.play(clip, "single");
+      setPreviewingId((current) => (current === asset.id ? null : current));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "语音生成失败", "error");
+    } finally {
+      setTtsBusy(false);
     }
   };
 
@@ -436,6 +472,14 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
                       )
                     }
                   />
+                  {clip.source === "tts" ? (
+                    <span className="shrink-0 rounded bg-electric/20 px-1 text-[8px] font-semibold text-electric">
+                      TTS
+                    </span>
+                  ) : null}
+                  {clip.rate && clip.rate !== 1 ? (
+                    <span className="shrink-0 text-[8px] text-mute">{clip.rate}x</span>
+                  ) : null}
                   <span className="shrink-0 text-[9px] text-mute">{clip.duration.toFixed(1)}s</span>
                   <IconButton
                     icon={previewingId === clip.id ? "pause" : "play"}
@@ -524,6 +568,70 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         >
           {binding ? "上传中…" : character.voices.length >= 20 ? "最多 20 条语音" : "添加语音（可多选）"}
         </Button>
+
+        <Button
+          size="sm"
+          variant={ttsOpen ? "secondary" : "primary"}
+          icon="sparkles"
+          className="w-full"
+          onClick={() => {
+            if (!ttsOpen && !ttsText.trim()) setTtsText(character.line || "");
+            setTtsOpen((open) => !open);
+          }}
+        >
+          文字生成语音（不用录音）
+        </Button>
+
+        {ttsOpen ? (
+          <div className="space-y-2 rounded-lg border border-electric/40 bg-electric/5 p-2">
+            <TextArea
+              value={ttsText}
+              maxLength={300}
+              onChange={(e) => setTtsText(e.target.value)}
+              placeholder="输入这句台词，例如：兄弟们，这波真的不亏。"
+              className="min-h-[64px] text-[12px]"
+              aria-label="要朗读的文字"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="语言 / 口音">
+                <Select value={ttsLang} onChange={(e) => setTtsLang(e.target.value)}>
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                  <option value="jp">日本語</option>
+                  <option value="kr">한국어</option>
+                  <option value="fr">Français</option>
+                  <option value="es">Español</option>
+                </Select>
+              </Field>
+              <Field label="语速">
+                <Select value={String(ttsSpeed)} onChange={(e) => setTtsSpeed(Number(e.target.value))}>
+                  <option value="0.8">0.8x 慢</option>
+                  <option value="1">1.0x 正常</option>
+                  <option value="1.2">1.2x 快</option>
+                  <option value="1.5">1.5x 很快</option>
+                </Select>
+              </Field>
+            </div>
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                variant="primary"
+                icon="sparkles"
+                className="flex-1"
+                disabled={ttsBusy || !ttsText.trim()}
+                onClick={() => void generateSpeech()}
+              >
+                {ttsBusy ? "生成中…" : "生成并添加"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setTtsOpen(false)}>
+                收起
+              </Button>
+            </div>
+            <p className="text-[9px] leading-relaxed text-mute">
+              Cloudflare MeloTTS · 最多 300 字 · 文字会作为这段语音的台词，生成的是真实 WAV 文件
+            </p>
+          </div>
+        ) : null}
 
         <Field label="播放方式">
           <Select

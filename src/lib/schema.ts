@@ -127,6 +127,9 @@ function element(raw: unknown, index: number): CanvasElement {
       if (seenVoiceIds.has(id)) return;
       seenVoiceIds.add(id);
       const line = str(v.line, LIMITS.line);
+      const rate = num(v.rate, 1, 0.5, 2);
+      const source = v.source === "tts" ? "tts" : v.source === "upload" ? "upload" : undefined;
+      const lang = ["zh", "en", "jp", "kr", "fr", "es"].includes(String(v.lang)) ? String(v.lang) : undefined;
       voices.push({
         id,
         name: str(v.name, LIMITS.name, "语音") || "语音",
@@ -135,6 +138,9 @@ function element(raw: unknown, index: number): CanvasElement {
         duration: num(v.duration, 0, 0, 600),
         volume: num(v.volume, 1, 0, 1),
         ...(line ? { line } : {}),
+        ...(rate !== 1 ? { rate } : {}),
+        ...(source ? { source } : {}),
+        ...(lang ? { lang } : {}),
       });
     };
     // legacy documents stored a single `voice`; migrate them on read

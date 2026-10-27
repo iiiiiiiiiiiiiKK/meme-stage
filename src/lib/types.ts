@@ -40,6 +40,12 @@ export interface VoiceClip {
   volume: number;
   /** optional subtitle shown together with this clip */
   line?: string;
+  /** playback rate (0.5–2); text-to-speech uses it as the "speed" style */
+  rate?: number;
+  /** where the clip came from */
+  source?: "upload" | "tts";
+  /** TTS language code (zh/en/jp/kr/fr/es) */
+  lang?: string;
 }
 
 export type VoiceMode = "cycle" | "random";

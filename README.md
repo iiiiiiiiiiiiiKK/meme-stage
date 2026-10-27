@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-47%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-49%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -16,7 +16,7 @@
 
 **MEME STAGE** 不是图片编辑器，也不是在线白板。
 
-它把「贴纸拼贴」和「语音互动」揉在一起：一次导入几十个人物，给每个人绑多条独立语音和台词，编排「点谁 → 谁说话 → 谁接梗」的互动链，最后发布成一个**打开就能点、点了就有声音**的网页作品。
+它把「贴纸拼贴」和「语音互动」揉在一起：一次导入几十个人物，给每个人绑多条独立语音（**导入真实音频，或直接输入文字生成语音**），编排「点谁 → 谁说话 → 谁接梗」的互动链，最后发布成一个**打开就能点、点了就有声音**的网页作品。
 
 - 不需要注册，不需要写代码。
 - 桌面端负责创作，手机端负责浏览和玩。
@@ -39,6 +39,10 @@
 | 多语音人物 · 每段独立台词与音量 | 气泡位置 · 预览里直接拖 |
 | --- | --- |
 | ![多语音](docs/screenshots/editor-voices.png) | ![气泡位置](docs/screenshots/bubble-position.png) |
+
+| 文字生成语音 · 选语言和语速 |
+| --- |
+| ![文字生成语音](docs/screenshots/tts.png) |
 
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
@@ -72,6 +76,7 @@
 ### 声音与文字
 
 - 每个人物最多 **20 条语音**，支持 MP3 / WAV / M4A / OGG（服务端按文件头识别真实格式）。
+- **文字生成语音**：输入最多 300 字，选择语言/口音（中文 / English / 日本語 / 한국어 / Français / Español）和语速（0.8x–1.5x），由 Cloudflare Workers AI（MeloTTS）生成真实 WAV 并存入 R2。
 - 点击人物可按顺序**轮换**或**随机**换语音；每条语音可以带自己的台词和音量。
 - 试听、批量添加、删除、从素材库追加。
 - 台词输入 + 6 种气泡预设（漫画 / 纯色 / 思考 / 字幕 / 大字 / 自定义）。
@@ -176,9 +181,10 @@ Browser (React 19 + TypeScript + Vite + Tailwind CSS v4)
 └── fetch /api/*  (same origin)
         │
 Cloudflare Pages + Pages Functions
-├── D1   projects / assets
-├── R2   meme-stage/{assets,cover}/*
-└── /p/:slug  读取 D1 → 注入 OG meta → 返回 SPA
+├── D1       projects / assets
+├── R2       meme-stage/{assets,tts,cover}/*
+├── Workers AI  MeloTTS（文字 → 真实 WAV）
+└── /p/:slug   读取 D1 → 注入 OG meta → 返回 SPA
 ```
 
 **技术选型理由**
@@ -248,6 +254,7 @@ ProjectData {
 | `GET` | `/api/assets` | 素材库 |
 | `DELETE` | `/api/assets/:id` | 删除素材 |
 | `GET` | `/api/files/:id` | 文件流（支持 Range，Immutable 缓存） |
+| `POST` | `/api/tts` | 文字生成语音（MeloTTS，写入 R2 并返回素材） |
 
 私有接口统一要求 `X-Editor-Key`；跨站写请求会被 middleware 拒绝。
 
@@ -255,7 +262,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（47 个，全部通过）
+### 单元测试（49 个，全部通过）
 
 ```bash
 npm test
@@ -297,6 +304,9 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 | 绑定语音 + 台词 | ✅ 上传 R2，回读 URL 正确 |
 | 同一人物多语音轮换 | ✅ 猫猫头 3 条语音，连点 3 次换 3 段音频 + 3 句不同台词（桌面 / Pixel / Safari） |
 | 编辑器添加多条语音 | ✅ 一次上传 3 条，列表显示 4 条（含原有 1 条），模式为轮换 |
+| 文字生成语音 API | ✅ 201 返回 196 KB / 2.22s WAV；无鉴权 401、非法语言 400、301 字 413 |
+| 编辑器文字生成语音 | ✅ 生成并添加第 2 条语音，带 TTS 标记，语速 1.2x |
+| 发布后 TTS 播放 | ✅ 第二次点击播放生成音频，`playbackRate = 1.2` |
 | 旧版单语音作品迁移 | ✅ 旧的 `voice` 字段自动迁移为 `voices[]`，发布页仍可播放 |
 | 预览里拖动气泡 | ✅ 拖动 140×-90 px → 世界坐标 (161,-103)，重载后仍保持 |
 | 发布后的气泡位置 | ✅ 访客页气泡位置与编辑器偏移一致（实测误差 0 px） |
@@ -331,11 +341,12 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 1. 新建 D1：`wrangler d1 create meme-stage-db`，把 `database_id` 填入 `wrangler.jsonc`。
 2. 建表：`wrangler d1 execute meme-stage-db --remote --file=./db/schema.sql`。
 3. 准备 R2 bucket，把名称填入 `wrangler.jsonc` 的 `r2_buckets`。
-4. `wrangler pages project create meme-stage --production-branch=main`（首次）。
-5. `npm run deploy`。
+4. `wrangler pages project create meme-stage --production-branch=main`（首次）。5. `npm run deploy`。
 6. 可选：`node scripts/seed-demo.mjs https://你的域名` 发布官方示例（会在 `.seed/seed.json` 生成归属 key，已被 gitignore）。
 
 Pages Functions 的 `/_redirects` 已处理 `/editor/*`、`/library` 的 SPA 回退；`/p/:slug` 由 Function 注入 OG meta。
+
+文字生成语音使用 `wrangler.jsonc` 里的 Workers AI 绑定（`"ai": { "binding": "AI" }`），账号需要启用 Workers AI；如果绑定不可用，接口会返回 503，导入音频的功能不受影响。
 
 ### 为什么不是 GitHub Pages？
 
@@ -354,6 +365,7 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 | Pages Functions | 10 万请求/天 | 静态资源走 CDN；API 仅在保存/发布/上传时调用 |
 | D1 | 5 GB 存储、500 万行读/天、10 万行写/天 | 1.4s 防抖保存；单作品 JSON ≤ 2 MB；300 元素上限 |
 | R2 | 10 GB 存储、100 万 Class A/月、1000 万 Class B/月 | 图片先压缩；缩略图独立；单文件 8/12 MB 上限 |
+| Workers AI | 每天 10,000 Neurons 免费额度 | 文字语音每段 ≤ 300 字；接口限流 24 次/分钟；MeloTTS 标价约 $0.000205/音频分钟 |
 
 **成本提示**：如果作品量或访问量明显增长，D1 行写入和 R2 存储会先触顶。扩展方向：作品 JSON 压到 R2、D1 只存索引；或迁移到 Durable Objects / 自建 Postgres。
 
@@ -379,6 +391,7 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 ## 已知限制
 
 - **不做 AI 抠图**。建议上传透明背景 PNG；普通照片会保留原背景。
+- **文字生成语音只支持 6 种语言**（zh/en/jp/kr/fr/es），MeloTTS 不提供情绪、性别或多音色选择；目前用语言 + 语速做风格区分，生成的是 WAV（体积比 MP3 大），单段最多 300 字。
 - **没有账号系统**。所有权绑定当前浏览器生成的 key；换设备/清缓存无法编辑旧作品。
 - **社交平台只显示静态封面**。X/微信里的链接卡片是图片 + 标题，真正互动要点进链接。
 - **多人协作未实现**。同一作品多窗口编辑采用「最后可见版本优先」，不做实时合并。
@@ -413,7 +426,7 @@ npm run build && npm test
 
 ## English
 
-**MEME STAGE** is an infinite-canvas studio for interactive memes. Import dozens of characters at once, give each one a set of voice clips and lines (they cycle on every tap), wire up click-driven dialogue chains, and publish a single link that anyone can open and play — no sign-up, no code.
+**MEME STAGE** is an infinite-canvas studio for interactive memes. Import dozens of characters at once, give each one a set of voice clips — **upload real audio or generate it from text** (6 languages, adjustable speed) — wire up click-driven dialogue chains, and publish a single link that anyone can open and play. No sign-up, no code.
 
 **Live:** https://meme-stage.pages.dev · **Demo:** https://meme-stage.pages.dev/p/demo · **Author:** [@0xkillcoin](https://x.com/0xkillcoin)
 
@@ -421,7 +434,7 @@ npm run build && npm test
 
 - True infinite canvas: pan, wheel/pinch zoom, marquee + shift multi-select, group drag, rotate/resize, snapping guides, layers, 60-step undo/redo, keyboard shortcuts.
 - Batch import of up to 300 images with client-side WebP compression and six auto-layout modes (no stacking).
-- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), plus draggable speech bubbles with anchor + offset controls and one-click “put this line on the canvas” text layers.
+- Per-character voices (up to 20 clips, MP3/WAV/M4A/OGG, cycle or random, per-clip subtitles and volume), plus **text-to-speech via Workers AI MeloTTS** (zh/en/jp/kr/fr/es, 0.8–1.5× speed, real WAV stored in R2), draggable speech bubbles with anchor + offset controls and one-click “put this line on the canvas” text layers.
 - Visual interaction editor: trigger → ordered/parallel actions → next event, with loop protection. The preview runs the exact same engine as the published page.
 - Autosave with real status, offline drafts, optimistic revisions, conflict recovery.
 - Publish to `/p/:slug` with an auto-generated 1200×630 Open Graph cover; PNG and JSON export; remix.

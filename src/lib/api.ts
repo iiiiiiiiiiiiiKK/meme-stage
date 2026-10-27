@@ -113,6 +113,15 @@ export const api = {
     return data.asset;
   },
 
+  /** Cloudflare Workers AI (MeloTTS) — returns a real WAV asset stored in R2 */
+  async tts(payload: { text: string; lang: string; speed?: number }): Promise<AssetRecord> {
+    const data = await request<{ asset: AssetRecord }>("/api/tts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return data.asset;
+  },
+
   async getPublic(slug: string): Promise<{ project: ServerProject }> {
     const res = await request<{ project: ServerProject }>(`/api/public/${encodeURIComponent(slug)}`);
     return { project: { ...res.project, data: normalizeProject(res.project.data) } };
