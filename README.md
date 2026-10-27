@@ -320,6 +320,12 @@ node scripts/verify-production.mjs https://meme-stage.pages.dev
 
 Pages Functions 的 `/_redirects` 已处理 `/editor/*`、`/library` 的 SPA 回退；`/p/:slug` 由 Function 注入 OG meta。
 
+### 为什么不是 GitHub Pages？
+
+GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和 R2。本项目的「保存 / 发布 / 上传 / 私有访问控制 / 动态 OG 注入」都需要服务端，所以线上版本放在 Cloudflare Pages。GitHub 仓库仍然作为源码主站和 Issue 入口。
+
+如果你要迁移到 Vercel，需要把 `functions/` 改写为 Vercel Functions，并把 D1 换成 Postgres、R2 换成 S3 兼容存储；前端代码和项目 JSON 格式可以直接复用。
+
 ---
 
 ## 免费额度与成本
