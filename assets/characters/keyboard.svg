@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" fill="none">
+  <!-- MEME STAGE original character: 键盘侠 -->
+  <g stroke="#0A0A0F" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <!-- body: keyboard slab -->
+    <rect x="96" y="560" width="408" height="200" rx="26" fill="#2A2A38"/>
+    <g stroke="#0A0A0F" stroke-width="6" fill="#3C3C52">
+      <rect x="120" y="586" width="52" height="40" rx="8"/>
+      <rect x="184" y="586" width="52" height="40" rx="8"/>
+      <rect x="248" y="586" width="52" height="40" rx="8"/>
+      <rect x="312" y="586" width="52" height="40" rx="8"/>
+      <rect x="376" y="586" width="52" height="40" rx="8"/>
+      <rect x="440" y="586" width="40" height="40" rx="8"/>
+      <rect x="132" y="640" width="52" height="40" rx="8"/>
+      <rect x="196" y="640" width="52" height="40" rx="8"/>
+      <rect x="260" y="640" width="52" height="40" rx="8"/>
+      <rect x="324" y="640" width="52" height="40" rx="8"/>
+      <rect x="388" y="640" width="40" height="40" rx="8"/>
+      <rect x="150" y="694" width="300" height="40" rx="8"/>
+    </g>
+    <!-- head: big keycap -->
+    <rect x="138" y="176" width="324" height="330" rx="46" fill="#9B5CFF"/>
+    <path d="M138 330 L462 330" stroke="#0A0A0F" stroke-width="10" opacity="0.25"/>
+    <!-- angry brows -->
+    <path d="M198 316 L272 344" stroke="#0A0A0F" stroke-width="18"/>
+    <path d="M402 316 L328 344" stroke="#0A0A0F" stroke-width="18"/>
+    <!-- eyes -->
+    <ellipse cx="238" cy="378" rx="26" ry="30" fill="#F4F1E8"/>
+    <ellipse cx="362" cy="378" rx="26" ry="30" fill="#F4F1E8"/>
+    <circle cx="244" cy="386" r="11" fill="#0A0A0F"/>
+    <circle cx="356" cy="386" r="11" fill="#0A0A0F"/>
+    <!-- shouting mouth -->
+    <path d="M240 442 C268 480 332 480 360 442 C332 456 268 456 240 442 Z" fill="#0A0A0F"/>
+    <path d="M262 452 L262 468 M300 456 L300 474 M338 452 L338 468" stroke="#FF4D9D" stroke-width="7"/>
+    <!-- ESC label -->
+    <text x="300" y="250" font-family="Arial Black, Arial" font-size="62" font-weight="900" fill="#F4F1E8" stroke="#0A0A0F" stroke-width="6" text-anchor="middle">ESC</text>
+    <!-- pointing hand -->
+    <path d="M500 700 C540 690 552 660 536 640" stroke="#F2C9A0" stroke-width="34"/>
+    <circle cx="534" cy="634" r="24" fill="#F2C9A0"/>
+  </g>
+</svg>

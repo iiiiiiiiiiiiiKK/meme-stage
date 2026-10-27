@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" fill="none">
+  <!-- MEME STAGE original character: 猫猫头 -->
+  <g stroke="#0A0A0F" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <!-- tail -->
+    <path d="M470 700 C560 700 574 620 512 606" stroke="#F2963C" stroke-width="34" fill="none"/>
+    <!-- body -->
+    <path d="M150 800 C150 660 210 586 300 586 C390 586 450 660 450 800 Z" fill="#F2963C"/>
+    <!-- head -->
+    <path d="M126 372 C126 216 200 132 300 132 C400 132 474 216 474 372 C474 512 400 566 300 566 C200 566 126 512 126 372 Z" fill="#FFB25C"/>
+    <!-- ears -->
+    <path d="M150 236 L166 116 L268 196 Z" fill="#FFB25C"/>
+    <path d="M450 236 L434 116 L332 196 Z" fill="#FFB25C"/>
+    <path d="M178 214 L186 160 L236 202 Z" fill="#FF8FAE" stroke="none"/>
+    <path d="M422 214 L414 160 L364 202 Z" fill="#FF8FAE" stroke="none"/>
+    <!-- stripes -->
+    <path d="M256 152 L276 196 M300 146 L300 196 M344 152 L324 196" stroke="#D97A1E" stroke-width="12"/>
+    <!-- deadpan eyes -->
+    <path d="M206 350 C226 330 262 330 282 350" stroke="#0A0A0F" stroke-width="14" fill="none"/>
+    <path d="M318 350 C338 330 374 330 394 350" stroke="#0A0A0F" stroke-width="14" fill="none"/>
+    <circle cx="244" cy="386" r="13" fill="#0A0A0F"/>
+    <circle cx="356" cy="386" r="13" fill="#0A0A0F"/>
+    <!-- nose + mouth -->
+    <path d="M288 424 L312 424 L300 440 Z" fill="#FF8FAE"/>
+    <path d="M300 440 L300 456 M300 456 C286 470 272 466 268 456 M300 456 C314 470 328 466 332 456" stroke="#0A0A0F" stroke-width="9" fill="none"/>
+    <!-- whiskers -->
+    <path d="M180 414 L236 424 M180 446 L236 442" stroke="#0A0A0F" stroke-width="7"/>
+    <path d="M420 414 L364 424 M420 446 L364 442" stroke="#0A0A0F" stroke-width="7"/>
+  </g>
+</svg>

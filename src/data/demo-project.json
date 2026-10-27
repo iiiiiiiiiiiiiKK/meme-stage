@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "title": "全员开麦：这波到底亏不亏",
+  "description": "六个互联网老熟人，每人一句。点老K会把整段接话链演完。",
+  "mode": "preset",
+  "width": 1600,
+  "height": 900,
+  "background": { "type": "color", "color": "#111119" },
+  "elements": [
+    {
+      "id": "el_k",
+      "type": "character",
+      "x": 80,
+      "y": 380,
+      "width": 330,
+      "height": 440,
+      "rotation": -3,
+      "z": 1,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "character": {
+        "name": "老K",
+        "imageUrl": "/demo/k.png",
+        "thumbUrl": "/demo/k-face.png",
+        "line": "兄弟们，这波真的不亏。",
+        "bubble": {
+          "preset": "comic",
+          "bg": "#b6ff3c",
+          "fg": "#07070a",
+          "border": "#07070a",
+          "borderWidth": 4,
+          "fontSize": 28,
+          "fontFamily": "system",
+          "bold": true,
+          "italic": false,
+          "radius": 18,
+          "padding": 18,
+          "tail": "bottom",
+          "animation": "pop",
+          "hold": 2.8
+        },
+        "effects": { "outline": 0, "shadow": true, "glow": "#b6ff3c", "shake": false },
+        "voice": {
+          "id": "vc_k",
+          "name": "老K · 这波不亏",
+          "url": "/demo/voice-k.wav",
+          "duration": 3.23,
+          "volume": 1
+        }
+      }
+    },
+    {
+      "id": "el_adai",
+      "type": "character",
+      "x": 480,
+      "y": 390,
+      "width": 300,
+      "height": 400,
+      "rotation": 2,
+      "z": 2,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "character": {
+        "name": "阿呆",
+        "imageUrl": "/demo/adai.png",
+        "thumbUrl": "/demo/adai-face.png",
+        "line": "啊？这也行？",
+        "bubble": {
+          "preset": "comic",
+          "bg": "#ffffff",
+          "fg": "#07070a",
+          "border": "#07070a",
+          "borderWidth": 4,
+          "fontSize": 26,
+          "fontFamily": "system",
+          "bold": true,
+          "italic": false,
+          "radius": 18,
+          "padding": 18,
+          "tail": "bottom",
+          "animation": "pop",
+          "hold": 2.4
+        },
+        "effects": { "outline": 0, "shadow": true, "glow": null, "shake": false },
+        "voice": {
+          "id": "vc_adai",
+          "name": "阿呆 · 这也行",
+          "url": "/demo/voice-adai.wav",
+          "duration": 2.24,
+          "volume": 1
+        }
+      }
+    },
+    {
+      "id": "el_wallet",
+      "type": "character",
+      "x": 850,
+      "y": 360,
+      "width": 330,
+      "height": 440,
+      "rotation": 0,
+      "z": 3,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "character": {
+        "name": "钱包君",
+        "imageUrl": "/demo/wallet.png",
+        "thumbUrl": "/demo/wallet-face.png",
+        "line": "别看了，我早就空了。",
+        "bubble": {
+          "preset": "comic",
+          "bg": "#4d7cff",
+          "fg": "#ffffff",
+          "border": "#07070a",
+          "borderWidth": 4,
+          "fontSize": 26,
+          "fontFamily": "system",
+          "bold": true,
+          "italic": false,
+          "radius": 18,
+          "padding": 18,
+          "tail": "bottom",
+          "animation": "pop",
+          "hold": 2.8
+        },
+        "effects": { "outline": 0, "shadow": true, "glow": null, "shake": false },
+        "voice": {
+          "id": "vc_wallet",
+          "name": "钱包君 · 早就空了",
+          "url": "/demo/voice-wallet.wav",
+          "duration": 3.4,
+          "volume": 1
+        }
+      }
+    },
+    {
+      "id": "el_keyboard",
+      "type": "character",
+      "x": 1100,
+      "y": 20,
+      "width": 320,
+      "height": 427,
+      "rotation": 3,
+      "z": 4,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "character": {
+        "name": "键盘侠",
+        "imageUrl": "/demo/keyboard.png",
+        "thumbUrl": "/demo/keyboard-face.png",
+        "line": "我不同意，但我先说为敬。",
+        "bubble": {
+          "preset": "comic",
+          "bg": "#ff4d9d",
+          "fg": "#07070a",
+          "border": "#07070a",
+          "borderWidth": 4,
+          "fontSize": 24,
+          "fontFamily": "system",
+          "bold": true,
+          "italic": false,
+          "radius": 18,
+          "padding": 18,
+          "tail": "bottom",
+          "animation": "pop",
+          "hold": 2.6
+        },
+        "effects": { "outline": 0, "shadow": true, "glow": null, "shake": false },
+        "voice": {
+          "id": "vc_keyboard",
+          "name": "键盘侠 · 先说为敬",
+          "url": "/demo/voice-keyboard.wav",
+          "duration": 2.75,
+          "volume": 1
+        }
+      }
+    },
+    {
+      "id": "el_boss",
+      "type": "character",
+      "x": 200,
+      "y": 30,
+      "width": 300,
+      "height": 400,
+      "rotation": -2,
+      "z": 5,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "character": {
+        "name": "老板",
+        "imageUrl": "/demo/boss.png",
+        "thumbUrl": "/demo/boss-face.png",
+        "line": "这个需求，今天下班前给我。",
+        "bubble": {
+          "preset": "comic",
+          "bg": "#f4f1e8",
+          "fg": "#07070a",
+          "border": "#07070a",
+          "borderWidth": 4,
+          "fontSize": 24,
+          "fontFamily": "system",
+          "bold": true,
+          "italic": false,
+          "radius": 18,
+          "padding": 16,
+          "tail": "bottom",
+          "animation": "pop",
+          "hold": 3
+        },
+        "effects": { "outline": 0, "shadow": true, "glow": null, "shake": false },
+        "voice": {
+          "id": "vc_boss",
+          "name": "老板 · 下班前",
+          "url": "/demo/voice-boss.wav",
+          "duration": 4.78,
+          "volume": 1
+        }
+      }
+    },
+    {
+      "id": "el_cat",
+      "type": "character",
+      "x": 1260,
+      "y": 470,
+      "width": 240,
+      "height": 320,
+      "rotation": 4,
+      "z": 6,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "character": {
+        "name": "猫猫头",
+        "imageUrl": "/demo/cat.png",
+        "thumbUrl": "/demo/cat-face.png",
+        "line": "喵。听不懂，但是喵。",
+        "bubble": {
+          "preset": "comic",
+          "bg": "#ffb25c",
+          "fg": "#07070a",
+          "border": "#07070a",
+          "borderWidth": 4,
+          "fontSize": 24,
+          "fontFamily": "system",
+          "bold": true,
+          "italic": false,
+          "radius": 18,
+          "padding": 16,
+          "tail": "bottom",
+          "animation": "pop",
+          "hold": 2.6
+        },
+        "effects": { "outline": 0, "shadow": true, "glow": null, "shake": false },
+        "voice": {
+          "id": "vc_cat",
+          "name": "猫猫头 · 但是喵",
+          "url": "/demo/voice-cat.wav",
+          "duration": 3.42,
+          "volume": 1
+        }
+      }
+    },
+    {
+      "id": "tx_hint",
+      "type": "text",
+      "x": 600,
+      "y": 44,
+      "width": 400,
+      "height": 96,
+      "rotation": -2,
+      "z": 7,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "flipX": false,
+      "flipY": false,
+      "text": {
+        "content": "点谁，谁开口",
+        "duration": 2.2,
+        "style": {
+          "preset": "big",
+          "bg": "#b6ff3c",
+          "fg": "#07070a",
+          "border": "#07070a",
+          "borderWidth": 5,
+          "fontSize": 40,
+          "fontFamily": "display",
+          "bold": true,
+          "italic": false,
+          "radius": 10,
+          "padding": 18,
+          "tail": "none",
+          "animation": "bounce",
+          "hold": 2.2
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_k",
+      "name": "老K 起手 → 阿呆接话",
+      "triggerId": "el_k",
+      "enabled": true,
+      "nextEventId": "ev_adai",
+      "steps": [
+        {
+          "id": "st_k_anim",
+          "type": "animate",
+          "targetId": "el_k",
+          "animation": "bounce",
+          "parallel": true
+        },
+        {
+          "id": "st_k_say",
+          "type": "say",
+          "targetId": "el_k",
+          "text": "兄弟们，这波真的不亏。",
+          "ms": 3200,
+          "parallel": true
+        },
+        {
+          "id": "st_k_audio",
+          "type": "playAudio",
+          "targetId": "el_k"
+        }
+      ]
+    },
+    {
+      "id": "ev_adai",
+      "name": "阿呆接话 → 钱包君补刀",
+      "triggerId": "el_adai",
+      "enabled": true,
+      "nextEventId": "ev_wallet",
+      "steps": [
+        {
+          "id": "st_adai_anim",
+          "type": "animate",
+          "targetId": "el_adai",
+          "animation": "bounce",
+          "parallel": true
+        },
+        {
+          "id": "st_adai_say",
+          "type": "say",
+          "targetId": "el_adai",
+          "ms": 2200,
+          "parallel": true
+        },
+        {
+          "id": "st_adai_audio",
+          "type": "playAudio",
+          "targetId": "el_adai"
+        }
+      ]
+    },
+    {
+      "id": "ev_wallet",
+      "name": "钱包君：我真的空了",
+      "triggerId": "el_wallet",
+      "enabled": true,
+      "nextEventId": null,
+      "steps": [
+        {
+          "id": "st_w_shake",
+          "type": "animate",
+          "targetId": "el_wallet",
+          "animation": "shake",
+          "parallel": true
+        },
+        {
+          "id": "st_w_say",
+          "type": "say",
+          "targetId": "el_wallet",
+          "ms": 3400,
+          "parallel": true
+        },
+        {
+          "id": "st_w_audio",
+          "type": "playAudio",
+          "targetId": "el_wallet"
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "audioMode": "single",
+    "reactions": true,
+    "showAuthor": true,
+    "allowRemix": true,
+    "authorName": "MEME STAGE",
+    "soundHint": "轻点角色，听他们开口"
+  },
+  "updatedAt": 1730000000000
+}

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" fill="none">
+  <!-- MEME STAGE original character: 钱包君 -->
+  <g stroke="#0A0A0F" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <!-- shadow puddle -->
+    <ellipse cx="300" cy="742" rx="196" ry="30" fill="#0A0A0F" opacity="0.35" stroke="none"/>
+    <!-- wallet body -->
+    <rect x="104" y="300" width="392" height="360" rx="36" fill="#2B6BFF"/>
+    <!-- wallet flap -->
+    <path d="M104 396 C104 352 130 330 172 330 L428 330 C470 330 496 352 496 396 Z" fill="#1B4FD1"/>
+    <!-- face -->
+    <ellipse cx="238" cy="478" rx="34" ry="40" fill="#F4F1E8"/>
+    <ellipse cx="362" cy="478" rx="34" ry="40" fill="#F4F1E8"/>
+    <circle cx="244" cy="490" r="13" fill="#0A0A0F"/>
+    <circle cx="356" cy="490" r="13" fill="#0A0A0F"/>
+    <!-- sad brows -->
+    <path d="M198 434 L270 452" stroke="#0A0A0F" stroke-width="12"/>
+    <path d="M402 434 L330 452" stroke="#0A0A0F" stroke-width="12"/>
+    <!-- sad mouth -->
+    <path d="M256 570 C280 542 320 542 344 570" stroke="#0A0A0F" stroke-width="12" fill="none"/>
+    <!-- tears -->
+    <path d="M204 512 C196 540 196 556 206 566" stroke="#8FD3FF" stroke-width="12"/>
+    <path d="M396 512 C404 540 404 556 394 566" stroke="#8FD3FF" stroke-width="12"/>
+    <!-- coin slot + moth -->
+    <rect x="258" y="352" width="84" height="18" rx="9" fill="#0A0A0F" stroke="none"/>
+    <!-- empty label -->
+    <text x="300" y="648" font-family="Arial Black, Arial" font-size="34" font-weight="900" fill="#F4F1E8" stroke="#0A0A0F" stroke-width="6" text-anchor="middle">¥ 0.00</text>
+    <!-- coin falling -->
+    <circle cx="470" cy="246" r="44" fill="#FFC93C"/>
+    <text x="470" y="261" font-family="Arial Black, Arial" font-size="40" font-weight="900" fill="#0A0A0F" stroke="none" text-anchor="middle">¥</text>
+    <path d="M508 190 C544 168 570 186 556 214" stroke="#0A0A0F" stroke-width="10" fill="none"/>
+  </g>
+</svg>

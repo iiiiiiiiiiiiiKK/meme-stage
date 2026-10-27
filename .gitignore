@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.wrangler/
+.wrangler-test/
+.seed/
+shots/
+build.log
+tmp-audio/
+.env
+.env.local
+.env.*.local
+playwright-report/
+test-results/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

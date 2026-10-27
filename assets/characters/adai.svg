@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" fill="none">
+  <!-- MEME STAGE original character: 阿呆 -->
+  <g stroke="#0A0A0F" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <!-- shirt -->
+    <path d="M128 800 C128 660 196 594 300 594 C404 594 472 660 472 800 Z" fill="#4D7CFF"/>
+    <!-- arms -->
+    <path d="M150 690 C96 660 84 596 112 566" stroke="#F2C9A0" stroke-width="12"/>
+    <path d="M450 690 C504 660 516 596 488 566" stroke="#F2C9A0" stroke-width="12"/>
+    <!-- head -->
+    <path d="M120 356 C120 196 196 106 300 106 C404 106 480 196 480 356 C480 520 406 582 300 582 C194 582 120 520 120 356 Z" fill="#FFD93D"/>
+    <!-- hair curl -->
+    <path d="M292 108 C286 62 322 42 350 56 C332 66 328 88 340 106" fill="#0A0A0F"/>
+    <!-- eyes -->
+    <ellipse cx="242" cy="322" rx="30" ry="36" fill="#0A0A0F"/>
+    <ellipse cx="358" cy="322" rx="30" ry="36" fill="#0A0A0F"/>
+    <circle cx="252" cy="310" r="9" fill="#F4F1E8"/>
+    <circle cx="368" cy="310" r="9" fill="#F4F1E8"/>
+    <!-- tiny mouth -->
+    <path d="M276 430 C292 446 308 446 324 430" stroke="#0A0A0F" stroke-width="12"/>
+    <!-- blush -->
+    <ellipse cx="196" cy="392" rx="26" ry="14" fill="#FF7A9C" stroke="none"/>
+    <ellipse cx="404" cy="392" rx="26" ry="14" fill="#FF7A9C" stroke="none"/>
+    <!-- collar -->
+    <path d="M236 596 L300 650 L364 596" stroke="#0A0A0F" stroke-width="12" fill="#F4F1E8"/>
+  </g>
+</svg>

@@ -1,0 +1,9 @@
+[
+  { "file": "voice-k.wav", "voice": "Microsoft Huihui Desktop", "rate": 0, "text": "兄弟们，这波真的不亏。" },
+  { "file": "voice-adai.wav", "voice": "Microsoft Huihui Desktop", "rate": 2, "text": "啊？这也行？" },
+  { "file": "voice-wallet.wav", "voice": "Microsoft Huihui Desktop", "rate": -1, "text": "别看了，我早就空了。" },
+  { "file": "voice-keyboard.wav", "voice": "Microsoft Huihui Desktop", "rate": 2, "text": "我不同意，但我先说为敬。" },
+  { "file": "voice-boss.wav", "voice": "Microsoft Huihui Desktop", "rate": -2, "text": "这个需求，今天下班前给我。" },
+  { "file": "voice-cat.wav", "voice": "Microsoft Huihui Desktop", "rate": 1, "text": "喵。听不懂，但是喵。" },
+  { "file": "voice-k2.wav", "voice": "Microsoft Huihui Desktop", "rate": 0, "text": "我说了，这波真的不亏。" }
+]

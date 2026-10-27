@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" fill="none">
+  <!-- MEME STAGE original character: K哥 -->
+  <g stroke="#0A0A0F" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <!-- body / hoodie -->
+    <path d="M96 800 C96 636 168 556 300 556 C432 556 504 636 504 800 Z" fill="#1B6B4A"/>
+    <!-- drawstrings -->
+    <path d="M236 610 L232 720" stroke="#F4F1E8" stroke-width="10"/>
+    <path d="M362 610 L368 720" stroke="#F4F1E8" stroke-width="10"/>
+    <!-- hood -->
+    <path d="M104 404 C104 226 190 128 300 128 C410 128 496 226 496 404 C496 480 420 512 300 512 C180 512 104 480 104 404 Z" fill="#2FBF71"/>
+    <!-- face -->
+    <ellipse cx="300" cy="350" rx="122" ry="136" fill="#F2C9A0"/>
+    <!-- sunglasses -->
+    <rect x="176" y="300" width="112" height="66" rx="18" fill="#0A0A0F"/>
+    <rect x="312" y="300" width="112" height="66" rx="18" fill="#0A0A0F"/>
+    <path d="M288 330 L312 330" stroke="#0A0A0F" stroke-width="14"/>
+    <path d="M196 316 L216 316" stroke="#6EE7A8" stroke-width="8" stroke-linecap="round"/>
+    <path d="M332 316 L352 316" stroke="#6EE7A8" stroke-width="8" stroke-linecap="round"/>
+    <!-- grin -->
+    <path d="M228 414 C252 462 348 462 372 414 C348 438 252 438 228 414 Z" fill="#F4F1E8" stroke="#0A0A0F" stroke-width="10"/>
+    <!-- gold chain -->
+    <path d="M214 540 C250 590 350 590 386 540" stroke="#FFC93C" stroke-width="16"/>
+    <circle cx="300" cy="586" r="20" fill="#FFC93C"/>
+    <!-- K logo -->
+    <text x="300" y="742" font-family="Arial Black, Arial" font-size="92" font-weight="900" fill="#B6FF3C" stroke="#0A0A0F" stroke-width="8" text-anchor="middle">K</text>
+  </g>
+</svg>

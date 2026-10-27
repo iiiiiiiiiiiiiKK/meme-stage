@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /editor
+Disallow: /library
+Disallow: /api/
+
+Sitemap: https://meme-stage.pages.dev/sitemap.xml
