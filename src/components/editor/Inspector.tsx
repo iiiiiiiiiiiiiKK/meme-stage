@@ -347,13 +347,6 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
     return () => synth.removeEventListener?.("voiceschanged", load);
   }, [deviceSupported]);
 
-  useEffect(() => {
-    void api
-      .ttsConfig()
-      .then(setTtsConfig)
-      .catch(() => setTtsConfig({ melotts: true, azure: false }));
-  }, []);
-
   const azureVoice = findAzureVoice(azureVoiceId);
 
   useEffect(() => {
@@ -373,26 +366,37 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
     );
   };
 
-  const uploadVoices = async (files: File[]) => {    if (files.length === 0) return;
+  const uploadVoices = async (files: File[]) => {
+    if (files.length === 0) return;
     setBinding(true);
     let added = 0;
+    const failed: string[] = [];
     try {
+      // one bad file must not abort the rest of the batch
       for (const file of files) {
-        const duration = await audioDuration(file);
-        const asset = await api.uploadAsset(file, { kind: "audio", name: file.name, duration });
-        appendClip({
-          id: asset.id,
-          name: file.name.replace(/\.[^.]+$/, "").slice(0, 40),
-          url: asset.url,
-          duration: asset.duration ?? duration,
-          volume: 1,
-          line: "",
-        });
-        added += 1;
+        try {
+          const duration = await audioDuration(file);
+          const asset = await api.uploadAsset(file, { kind: "audio", name: file.name, duration });
+          appendClip({
+            id: asset.id,
+            name: file.name.replace(/\.[^.]+$/, "").slice(0, 40),
+            url: asset.url,
+            duration: asset.duration ?? duration,
+            volume: 1,
+            line: "",
+          });
+          added += 1;
+        } catch (error) {
+          failed.push(`${file.name}${error instanceof Error ? `（${error.message}）` : ""}`);
+        }
       }
-      toast(`已添加 ${added} 条语音，点人物会按顺序轮换`, "success");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "语音上传失败", "error");
+      if (added > 0 && failed.length === 0) {
+        toast(`已添加 ${added} 条语音，点人物会按顺序轮换`, "success");
+      } else if (added > 0) {
+        toast(`已添加 ${added} 条，${failed.length} 条失败：${failed[0]}`, "info");
+      } else {
+        toast(failed[0] ? `语音上传失败：${failed[0]}` : "语音上传失败", "error");
+      }
     } finally {
       setBinding(false);
     }
@@ -992,7 +996,8 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         </p>
       </Section>
 
-      <Section title="气泡样式" defaultOpen={false}>        <BubbleStyleEditor
+      <Section title="气泡样式" defaultOpen={false}>
+        <BubbleStyleEditor
           style={character.bubble}
           onChange={(patch) =>
             updateCharacter(

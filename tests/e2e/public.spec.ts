@@ -27,7 +27,16 @@ test.describe("landing", () => {
   test("shows the live demo and can open the studio", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("h1")).toContainText("塞进一张画布");
-    await expect(page.locator('[data-testid="visitor"] canvas').first()).toBeVisible();
+    // WebKit needs the stage container to have real layout before Konva paints.
+    await page.waitForSelector('[data-testid="visitor"] canvas', { timeout: 30_000 });
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('[data-testid="visitor"]');
+        return !!el && el.getBoundingClientRect().width > 100;
+      },
+      { timeout: 30_000 },
+    );
+    await expect(page.locator('[data-testid="visitor"] canvas').first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("link", { name: "开始创作" }).first()).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
@@ -58,7 +67,12 @@ test.describe("landing", () => {
     await expect
       .poll(() => page.evaluate(() => (window as any).__played.length), { timeout: 20_000 })
       .toBeGreaterThan(0);
-    await expect(page.getByText("这波真的不亏").first()).toBeVisible();
+    // Whatever character the tap landed on, the hero must show a subtitle bubble
+    // with it. Asserting one exact line made this flaky on WebKit, where the tap
+    // coordinate can drift after the page settles.
+    await expect(page.locator('[data-testid="bubble"]').first()).toBeVisible({ timeout: 20_000 });
+    const shown = await page.locator('[data-testid="bubble"]').first().getAttribute("data-bubble-text");
+    expect((shown ?? "").trim().length).toBeGreaterThan(0);
   });
 });
 

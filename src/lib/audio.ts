@@ -17,6 +17,9 @@ interface PlaybackHandle {
  *   cannot freeze an interaction chain
  */
 export class AudioEngine {
+  /** upper bound on buffered clips; keeps memory flat during long sessions */
+  static readonly MAX_CACHED_CLIPS = 48;
+
   mode: AudioMode = "single";
   onError: ((message: string, clip: VoiceClip | null) => void) | null = null;
   onPlayingChange: ((playing: boolean) => void) | null = null;
@@ -41,7 +44,14 @@ export class AudioEngine {
 
   preload(urls: string[]): void {
     for (const url of urls) {
-      if (!url || this.elements.has(url)) continue;
+      if (!url) continue;
+      const existing = this.elements.get(url);
+      if (existing) {
+        // touch: keep recently used clips at the end of the eviction order
+        this.elements.delete(url);
+        this.elements.set(url, existing);
+        continue;
+      }
       try {
         const audio = new Audio();
         // voices are short: fully buffer them so the first tap starts instantly
@@ -53,6 +63,37 @@ export class AudioEngine {
         // ignore — playback will report a real error later
       }
     }
+    this.evictIdleElements();
+  }
+
+  /**
+   * Bounded cache: a long editing session can touch many clips, and every cached
+   * HTMLAudioElement holds decoded audio. Never evict a clip that is playing.
+   */
+  private evictIdleElements(): void {
+    if (this.elements.size <= AudioEngine.MAX_CACHED_CLIPS) return;
+    for (const [url, audio] of this.elements) {
+      if (this.elements.size <= AudioEngine.MAX_CACHED_CLIPS) break;
+      if (audio.paused) {
+        audio.removeAttribute("src");
+        audio.load();
+        this.elements.delete(url);
+      }
+    }
+  }
+
+  /** release every buffered clip (stage unmount / project switch) */
+  release(): void {
+    this.stop();
+    for (const audio of this.elements.values()) {
+      try {
+        audio.removeAttribute("src");
+        audio.load();
+      } catch {
+        // ignore
+      }
+    }
+    this.elements.clear();
   }
 
   stop(): void {
@@ -87,6 +128,10 @@ export class AudioEngine {
     if (!audio) {
       audio = new Audio();
       audio.preload = "auto";
+      this.elements.set(clip.url, audio);
+    } else {
+      // refresh eviction order so the active clip is not dropped next
+      this.elements.delete(clip.url);
       this.elements.set(clip.url, audio);
     }
     audio.volume = Math.max(0, Math.min(1, clip.volume ?? 1));

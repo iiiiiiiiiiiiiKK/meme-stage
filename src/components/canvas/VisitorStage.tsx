@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Stage, Layer, Rect } from "react-konva";
+import { Stage, Layer, Rect, Image as KonvaImage } from "react-konva";
 import Konva from "konva";
 import { ElementNode, type NodeRegistry, type PulseSignal } from "./ElementNode";
 import type { BubblePlacement, BubbleStyle, CanvasElement, ProjectData, VoiceClip } from "../../lib/types";
@@ -10,6 +10,7 @@ import { bubbleAnchorPoint } from "../../lib/bubblePosition";
 import { DEFAULT_BUBBLE_PLACEMENT } from "../../lib/defaults";
 import { fitViewport, frameBounds, worldToScreen, zoomAt, type Viewport } from "../../lib/geometry";
 import { makeBubble } from "../../lib/defaults";
+import { cachedImage, loadImage } from "../../lib/image";
 import { Icon } from "../Icon";
 
 interface BubbleItem {
@@ -64,6 +65,11 @@ export function VisitorStage({
   const [flash, setFlash] = useState(0);
   const [interacted, setInteracted] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
+  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(() =>
+    project.background.type === "image" && project.background.url
+      ? cachedImage(project.background.url)
+      : null,
+  );
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const voiceCursors = useRef<Map<string, number>>(new Map());
   const bubbleDrag = useRef<{
@@ -115,6 +121,31 @@ export function VisitorStage({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.mode]);
+
+  // background image is authored in the editor; the visitor stage must show it too
+  useEffect(() => {
+    let alive = true;
+    const url = project.background.type === "image" ? project.background.url : undefined;
+    if (!url) {
+      setBgImage(null);
+      return;
+    }
+    const hit = cachedImage(url);
+    if (hit) {
+      setBgImage(hit);
+      return;
+    }
+    loadImage(url)
+      .then((img) => {
+        if (alive) setBgImage(img);
+      })
+      .catch(() => {
+        if (alive) setBgImage(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [project.background.type, project.background.url]);
 
   const clearBubbles = useCallback(() => {
     for (const timer of timers.current.values()) clearTimeout(timer);
@@ -188,6 +219,13 @@ export function VisitorStage({
       audioEngine.onError = null;
     };
   }, [onError]);
+
+  // Unmount-only: the stage owns the warm cache, but `onError` is usually an
+  // inline callback, so releasing inside the effect above would wipe the cache
+  // on every parent re-render and interrupt playback.
+  useEffect(() => {
+    return () => audioEngine.release();
+  }, []);
 
   // warm every non-device clip so the first tap does not wait for the network
   useEffect(() => {
@@ -415,6 +453,17 @@ export function VisitorStage({
               fill={project.background.color}
               cornerRadius={compact ? 10 : 0}
             />
+            {bgImage ? (
+              <KonvaImage
+                image={bgImage}
+                x={0}
+                y={0}
+                width={project.width}
+                height={project.height}
+                cornerRadius={compact ? 10 : 0}
+                listening={false}
+              />
+            ) : null}
           </Layer>
           <Layer>
             {visible.map((el) => {
@@ -538,6 +587,8 @@ function Bubble({
   return (
     <div
       className={`absolute z-10 ${draggable ? "pointer-events-auto cursor-move touch-none" : "pointer-events-none"}`}
+      data-testid="bubble"
+      data-bubble-text={bubble.text}
       style={{
         left: bubble.x,
         top: bubble.y,

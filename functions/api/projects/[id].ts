@@ -46,32 +46,58 @@ export async function onRequestPut(context: FunctionContext): Promise<Response> 
     return fail(400, "invalid_project", "作品数据不合法");
   }
 
-  if (!body.force && Number(body.rev) !== row.rev) {
-    if (jsonData === row.data) {
-      return json({ rev: row.rev, updatedAt: row.updated_at });
-    }
-    // Accept a save that is demonstrably newer than what is stored. This makes
-    // retries after a reload idempotent instead of surfacing a fake conflict.
-    let storedUpdatedAt = 0;
-    try {
-      storedUpdatedAt = Number((JSON.parse(row.data) as { updatedAt?: number }).updatedAt ?? 0);
-    } catch {
-      storedUpdatedAt = 0;
-    }
+  let storedUpdatedAt = 0;
+  try {
+    storedUpdatedAt = Number((JSON.parse(row.data) as { updatedAt?: number }).updatedAt ?? 0);
+  } catch {
+    storedUpdatedAt = 0;
+  }
+
+  if (!body.force) {
+    // Idempotent retry: the same document is already stored, so nothing to write.
+    if (jsonData === row.data) return json({ rev: row.rev, updatedAt: row.updated_at });
+    // Accept a save that is demonstrably newer than what is stored (a retry after
+    // reload), but reject one that would roll the document back.
     if (incomingUpdatedAt < storedUpdatedAt) {
       return fail(409, "conflict", "这个作品在别处被修改过，请先同步最新版本");
     }
   }
 
-  const now = Date.now();
-  const nextRev = row.rev + 1;
+  // Optimistic lock in SQL: two concurrent PUTs can both read the same rev, so the
+  // version predicate has to live in the UPDATE itself, not only in this handler.
+  const attempts = body.force ? 1 : 4;
+  let current = row;
   try {
-    await context.env.DB.prepare(
-      "UPDATE projects SET data = ?, title = ?, description = ?, rev = ?, updated_at = ? WHERE id = ? AND owner_hash = ?",
-    )
-      .bind(jsonData, title, description, nextRev, now, id, owner)
-      .run();
-    return json({ rev: nextRev, updatedAt: now });
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const now = Date.now();
+      const nextRev = current.rev + 1;
+      const result = body.force
+        ? await context.env.DB.prepare(
+            "UPDATE projects SET data = ?, title = ?, description = ?, rev = rev + 1, updated_at = ? WHERE id = ? AND owner_hash = ?",
+          )
+            .bind(jsonData, title, description, now, id, owner)
+            .run()
+        : await context.env.DB.prepare(
+            "UPDATE projects SET data = ?, title = ?, description = ?, rev = ?, updated_at = ? WHERE id = ? AND owner_hash = ? AND rev = ?",
+          )
+            .bind(jsonData, title, description, nextRev, now, id, owner, current.rev)
+            .run();
+
+      if ((result.meta?.changes ?? 0) > 0) {
+        if (body.force) {
+          const fresh = await findProjectById(context.env, id);
+          return json({ rev: fresh?.rev ?? nextRev, updatedAt: now });
+        }
+        return json({ rev: nextRev, updatedAt: now });
+      }
+
+      // Somebody else advanced rev between our read and this write.
+      const fresh = await findProjectById(context.env, id);
+      if (!fresh) return fail(404, "not_found", "作品不存在或无权修改");
+      if (fresh.data === jsonData) return json({ rev: fresh.rev, updatedAt: fresh.updated_at });
+      current = fresh;
+    }
+    return fail(409, "conflict", "这个作品在别处被修改过，请先同步最新版本");
   } catch (error) {
     console.error("save project failed", error);
     return fail(500, "internal", "保存失败，本地草稿已保留");

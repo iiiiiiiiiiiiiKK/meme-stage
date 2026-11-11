@@ -99,6 +99,27 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
     const url = new URL(`/p/${slug}`, context.request.url).toString();
     return json({ slug, url, rev: row.rev + 1, coverUrl });
   } catch (error) {
+    // A concurrent publish can win the unique slug index race after our
+    // pre-check. Fall back to a fresh random suffix instead of a 500.
+    if (!row.slug) {
+      try {
+        const retrySlug = await uniqueSlug(context.env, title);
+        await context.env.DB.prepare(
+          `UPDATE projects SET data = ?, title = ?, description = ?, cover_url = ?, slug = ?, visibility = 'public', published = 1, rev = rev + 1, updated_at = ?
+           WHERE id = ? AND owner_hash = ?`,
+        )
+          .bind(jsonData, title, description, coverUrl, retrySlug, Date.now(), id, owner)
+          .run();
+        return json({
+          slug: retrySlug,
+          url: new URL(`/p/${retrySlug}`, context.request.url).toString(),
+          rev: row.rev + 1,
+          coverUrl,
+        });
+      } catch (retryError) {
+        console.error("publish retry failed", retryError);
+      }
+    }
     console.error("publish failed", error);
     return fail(500, "internal", "发布失败，请稍后重试");
   }

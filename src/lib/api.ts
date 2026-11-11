@@ -128,7 +128,6 @@ export const api = {
     });
     return data.asset;
   },
-
   async ttsConfig(): Promise<{ melotts: boolean; azure: boolean }> {
     return request("/api/tts", { cache: "no-store" });
   },

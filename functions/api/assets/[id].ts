@@ -16,8 +16,16 @@ export async function onRequestDelete(context: FunctionContext): Promise<Respons
       .first<AssetRow>();
     if (!row) return fail(404, "not_found", "素材不存在");
     if (row.kind === "cover") return fail(400, "cover_locked", "封面素材不能直接删除");
-    await context.env.BUCKET.delete(row.object_key);
+    // Remove the metadata first: if R2 then fails we keep a row pointing at a
+    // missing object (recoverable), whereas the reverse leaks an unreferenced file
+    // that no listing can ever find again.
     await context.env.DB.prepare("DELETE FROM assets WHERE id = ? AND owner_hash = ?").bind(id, owner).run();
+    try {
+      await context.env.BUCKET.delete(row.object_key);
+    } catch (error) {
+      console.error("asset object delete failed", error);
+      return json({ ok: true, objectPending: row.object_key });
+    }
     return json({ ok: true });
   } catch (error) {
     console.error("delete asset failed", error);

@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-66%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-70%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -270,7 +270,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（66 个，全部通过）
+### 单元测试（70 个，全部通过）
 
 ```bash
 npm test
@@ -284,6 +284,7 @@ npm test
 - 语音选择：顺序轮换、随机不重复、指定片段、单语音、空列表。
 - 气泡定位：默认上方、自动翻转、四种锚点、世界坐标偏移、旧数据默认值。
 - 视口几何：适配、围绕指针缩放、吸附、旋转内容包围盒。
+- 音频缓存：重复预加载不重复建元素、超出上限按需淘汰、正在播放的片段不被淘汰、`release()` 释放全部缓冲。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 
@@ -291,7 +292,7 @@ npm test
 npm run test:e2e       # Playwright: 桌面 + 手机（Pixel 7 视口）公共页面
 ```
 
-`npm run test:e2e` 在 2026-10-27 的结果：**18 / 18 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 多语音轮换 / 气泡锚点 / 404）。
+`npm run test:e2e` 在 2026-11-12 的结果：**18 / 18 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 多语音轮换 / 气泡锚点 / 404）。
 
 完整创作闭环用下面的脚本复跑：
 
@@ -430,10 +431,13 @@ GitHub Pages 只能托管纯静态文件，无法运行 Pages Functions、D1 和
 - Edge 浏览器的免 key「朗读」接口有 DRM 签名（实测 403），非官方且不稳定，没有接入；Windows SAPI 只能在本机运行，也不能作为线上服务。
 - **没有账号系统**。所有权绑定当前浏览器生成的 key；换设备/清缓存无法编辑旧作品。
 - **社交平台只显示静态封面**。X/微信里的链接卡片是图片 + 标题，真正互动要点进链接。
-- **多人协作未实现**。同一作品多窗口编辑采用「最后可见版本优先」，不做实时合并。
+- **多人协作未实现**。同一作品多窗口编辑采用「最后可见版本优先」，不做实时合并。保存走 D1 原子条件更新（`WHERE rev = ?`），两个并发写入不会静默互相覆盖，失败的一方会收到 409 并在客户端重读后重试。
 - **手机端编辑器是可用级别**，复杂排版仍建议桌面端；作品浏览和互动在手机上是完整体验。
+- **音频缓存有上限**。作品页会预热语音并从缓存播放，同时最多保留 48 条已解码片段；正在播放的片段不会被淘汰，舞台卸载时整体释放。
 - **音频格式依赖浏览器**。服务端会校验，但个别浏览器对某些编码的支持仍可能失败，会有明确错误提示。
-- **无自动化清理任务**。删除作品不会级联删除历史素材，避免误删被其他作品引用的文件。
+- **背景图会在作品页渲染**。编辑器里设置的背景图现在也出现在发布页和预览中（此前只画背景色）。
+- **无自动化清理任务**。删除作品不会级联删除历史素材，避免误删被其他作品引用的文件。删除单个素材时先删元数据再删 R2 对象，对象删除失败会返回 `objectPending` 而不是留下无法再被发现的孤儿文件。
+- **素材列表分页**。单 key 最多 600 个素材，左侧「我的素材」每次加载 120 条，底部有「加载更多素材」。删除项目不会释放其素材配额，需要手动清理。
 
 ---
 

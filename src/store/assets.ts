@@ -7,25 +7,35 @@ interface AssetState {
   items: AssetRecord[];
   loading: boolean;
   loaded: boolean;
-  load: () => Promise<void>;
+  hasMore: boolean;
+  load: (opts?: { more?: boolean }) => Promise<void>;
   add: (asset: AssetRecord) => void;
   remove: (id: string) => Promise<void>;
 }
+
+const PAGE_SIZE = 120;
 
 export const useAssets = create<AssetState>((set, get) => ({
   items: [],
   loading: false,
   loaded: false,
-  load: async () => {
+  hasMore: false,
+  load: async (opts = {}) => {
     if (get().loading) return;
+    const more = opts.more === true && get().hasMore;
+    const offset = more ? get().items.length : 0;
     set({ loading: true });
     try {
-      const res = await fetch("/api/assets", {
+      const res = await fetch(`/api/assets?limit=${PAGE_SIZE}&offset=${offset}`, {
         headers: { "X-Editor-Key": getEditorKey() },
       });
       if (!res.ok) throw new Error(String(res.status));
-      const data = (await res.json()) as { assets: AssetRecord[] };
-      set({ items: data.assets, loaded: true });
+      const data = (await res.json()) as { assets: AssetRecord[]; hasMore?: boolean };
+      set((s) => ({
+        items: more ? [...s.items, ...data.assets] : data.assets,
+        hasMore: data.hasMore ?? data.assets.length === PAGE_SIZE,
+        loaded: true,
+      }));
     } catch {
       set({ loaded: true });
     } finally {

@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 import type { FunctionContext } from "../../_lib/http";
-import { clientIp, editorHash, fail, json, rateLimit } from "../../_lib/http";
+import { clampInt, clientIp, editorHash, fail, json, rateLimit } from "../../_lib/http";
 import { sniff, SIZE_LIMITS } from "../../_lib/files";
 import { assetRecord, type AssetRow } from "../../_lib/projects";
 
@@ -9,13 +9,24 @@ const MAX_ASSETS_PER_OWNER = 600;
 export async function onRequestGet(context: FunctionContext): Promise<Response> {
   const owner = await editorHash(context.request);
   if (!owner) return fail(401, "unauthorized", "缺少有效的编辑器身份");
+  // The per-owner quota is 600, so the list has to be pageable instead of
+  // silently hiding everything past the newest 120 rows.
+  const url = new URL(context.request.url);
+  const limit = clampInt(url.searchParams.get("limit"), 120, 1, 200);
+  const offset = clampInt(url.searchParams.get("offset"), 0, 0, 100_000);
   try {
     const result = await context.env.DB.prepare(
-      "SELECT * FROM assets WHERE owner_hash = ? AND kind != 'cover' ORDER BY created_at DESC LIMIT 120",
+      "SELECT * FROM assets WHERE owner_hash = ? AND kind != 'cover' ORDER BY created_at DESC LIMIT ? OFFSET ?",
     )
-      .bind(owner)
+      .bind(owner, limit, offset)
       .all<AssetRow>();
-    return json({ assets: (result.results ?? []).map(assetRecord) });
+    const rows = result.results ?? [];
+    return json({
+      assets: rows.map(assetRecord),
+      limit,
+      offset,
+      hasMore: rows.length === limit,
+    });
   } catch (error) {
     console.error("list assets failed", error);
     return fail(500, "internal", "读取素材失败");
@@ -91,30 +102,39 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
         cacheControl: "public, max-age=31536000, immutable",
       },
     });
+  } catch (error) {
+    console.error("upload failed", error);
+    return fail(500, "internal", "上传失败，请稍后重试");
+  }
+
+  try {
     await context.env.DB.prepare(
       `INSERT INTO assets (id, owner_hash, kind, object_key, mime, size, name, width, height, duration, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(id, owner, kind, key, sniffed.mime, buffer.byteLength, name, width, height, duration, now)
       .run();
-    return json(
-      {
-        asset: {
-          id,
-          kind,
-          url: `/api/files/${id}`,
-          mime: sniffed.mime,
-          size: buffer.byteLength,
-          name,
-          width,
-          height,
-          duration,
-        },
-      },
-      201,
-    );
   } catch (error) {
-    console.error("upload failed", error);
+    console.error("asset record failed", error);
+    // R2 and D1 are not transactional: drop the orphan object instead of leaking it.
+    await context.env.BUCKET.delete(key).catch(() => undefined);
     return fail(500, "internal", "上传失败，请稍后重试");
   }
+
+  return json(
+    {
+      asset: {
+        id,
+        kind,
+        url: `/api/files/${id}`,
+        mime: sniffed.mime,
+        size: buffer.byteLength,
+        name,
+        width,
+        height,
+        duration,
+      },
+    },
+    201,
+  );
 }

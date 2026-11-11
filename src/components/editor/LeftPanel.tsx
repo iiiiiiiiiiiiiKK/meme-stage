@@ -230,6 +230,8 @@ function AssetsTab() {
   const updateCharacter = useEditor((s) => s.updateCharacter);
   const assets = useAssets((s) => s.items);
   const loadAssets = useAssets((s) => s.load);
+  const assetsLoading = useAssets((s) => s.loading);
+  const assetsHasMore = useAssets((s) => s.hasMore);
   const addAsset = useAssets((s) => s.add);
   const removeAsset = useAssets((s) => s.remove);
   const [uploading, setUploading] = useState(false);
@@ -489,6 +491,17 @@ function AssetsTab() {
             ))}
           </ul>
         )}
+        {assetsHasMore ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mt-2 w-full"
+            disabled={assetsLoading}
+            onClick={() => void loadAssets({ more: true })}
+          >
+            {assetsLoading ? "加载中…" : "加载更多素材"}
+          </Button>
+        ) : null}
       </div>
 
       <div className="mt-4 rounded-md border border-line bg-ink-3/60 p-2.5 text-[10px] leading-relaxed text-mute">

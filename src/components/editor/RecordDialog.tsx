@@ -82,15 +82,13 @@ export function RecordDialog({
       recorder.start(200);
       setSeconds(0);
       setPhase("recording");
+      // wall-clock based: setInterval drifts when the tab throttles timers,
+      // so the displayed time must not be the source of truth for duration.
+      const startedAt = performance.now();
       timerRef.current = setInterval(() => {
-        setSeconds((value) => {
-          const next = value + 0.1;
-          if (next >= MAX_SECONDS) {
-            stopRecording();
-            return MAX_SECONDS;
-          }
-          return next;
-        });
+        const elapsed = Math.min(MAX_SECONDS, (performance.now() - startedAt) / 1000);
+        setSeconds(elapsed);
+        if (elapsed >= MAX_SECONDS) stopRecording();
       }, 100);
     } catch (err) {
       const name = (err as { name?: string })?.name;
