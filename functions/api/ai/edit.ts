@@ -17,7 +17,7 @@ import {
   uploadReference,
 } from "../../_lib/imageProvider";
 import { sniff } from "../../_lib/files";
-import { storeGeneratedImage } from "../../_lib/generatedAsset";
+import { GeneratedAssetError, storeGeneratedImage } from "../../_lib/generatedAsset";
 
 const MAX_REFERENCE_BYTES = 12 * 1024 * 1024;
 
@@ -88,6 +88,7 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
     });
   } catch (error) {
     if (error instanceof ProviderError) return fail(error.status, error.code, error.message);
+    if (error instanceof GeneratedAssetError) return fail(error.status, error.code, error.message);
     console.error("ai edit failed", error);
     return fail(500, "internal", "转换失败，请稍后重试");
   }

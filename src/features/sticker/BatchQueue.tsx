@@ -22,8 +22,8 @@ import { decodeToCanvas, downloadBlob, formatBytes } from "./engine/image";
 import {
   getSourceBlob,
   getVariantBlob,
+  listAllVariants,
   listBatches,
-  listVariants,
   putBatch,
   putMask,
   putSource,
@@ -265,45 +265,25 @@ export function BatchQueue() {
         const { blob: encoded, mime } = await encode(finalCanvas, "png");
         const thumb = await thumbnail(finalCanvas, 320);
 
-        let variantId = "";
-        if (autoSave) {
-          const variant = await putVariant({
-            sourceId: item.sourceId,
-            maskId: mask.id,
-            kind: "local-cutout",
-            name: `${item.name.replace(/\.[^.]+$/, "")} · ${current.settings.mode}`,
-            width: finalCanvas.width,
-            height: finalCanvas.height,
-            mime,
-            outline: current.settings.outline,
-            mode: current.settings.mode,
-            warnings: result.warnings,
-            blob: encoded,
-            thumb,
-          });
-          variantId = variant.id;
-        } else {
-          // Even in "don't keep" mode the rendered bytes must exist for the
-          // preview/download, so they are stored as a variant and only skipped
-          // from the library decision later. Keeping them makes retry and ZIP
-          // behave the same in both modes.
-          const variant = await putVariant({
-            sourceId: item.sourceId,
-            maskId: mask.id,
-            kind: "local-cutout",
-            name: `${item.name.replace(/\.[^.]+$/, "")} · ${current.settings.mode}`,
-            width: finalCanvas.width,
-            height: finalCanvas.height,
-            mime,
-            outline: current.settings.outline,
-            mode: current.settings.mode,
-            warnings: result.warnings,
-            blob: encoded,
-            thumb,
-          });
-          variantId = variant.id;
-        }
-
+        // The bytes must exist either way: ZIP export and canvas import both read
+        // them. `ephemeral` is what makes the "保存到本机素材" switch real — a
+        // temporary render is kept on disk but hidden from the library.
+        const variant = await putVariant({
+          sourceId: item.sourceId,
+          maskId: mask.id,
+          kind: "local-cutout",
+          name: `${item.name.replace(/\.[^.]+$/, "")} · ${current.settings.mode}`,
+          width: finalCanvas.width,
+          height: finalCanvas.height,
+          mime,
+          outline: current.settings.outline,
+          mode: current.settings.mode,
+          warnings: result.warnings,
+          ephemeral: !autoSave,
+          blob: encoded,
+          thumb,
+        });
+        const variantId = variant.id;
         if (timedOut) return;
         update({
           stage: "done",
@@ -438,7 +418,7 @@ export function BatchQueue() {
     setImporting(true);
     try {
       const variants: StickerVariant[] = [];
-      const all = await listVariants();
+      const all = await listAllVariants();
       const byId = new Map(all.map((variant) => [variant.id, variant]));
       for (const item of doneItems) {
         for (const id of item.variantIds) {

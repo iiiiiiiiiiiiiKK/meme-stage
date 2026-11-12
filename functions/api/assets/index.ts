@@ -1,10 +1,8 @@
 /// <reference types="@cloudflare/workers-types" />
 import type { FunctionContext } from "../../_lib/http";
 import { clampInt, clientIp, editorHash, fail, json, rateLimit } from "../../_lib/http";
-import { sniff, SIZE_LIMITS } from "../../_lib/files";
+import { MAX_ASSETS_PER_OWNER, sniff, SIZE_LIMITS } from "../../_lib/files";
 import { assetRecord, type AssetRow } from "../../_lib/projects";
-
-const MAX_ASSETS_PER_OWNER = 600;
 
 export async function onRequestGet(context: FunctionContext): Promise<Response> {
   const owner = await editorHash(context.request);

@@ -93,8 +93,9 @@ describe("image generation", () => {
     const call = calls[0];
     expect(call.url).toBe("https://gateway.test/v1/images/generations");
     expect(call.headers.get("authorization")).toBe("Bearer sk-test");
-    // the retry loop suffixes the attempt index so an upstream retry is a new request
-    expect(call.headers.get("idempotency-key")).toBe("key-1-0");
+    // One logical generation keeps one idempotency key, so a retry can never be
+    // billed twice upstream.
+    expect(call.headers.get("idempotency-key")).toBe("key-1");
     expect(call.body.prompt).toBe("a cat");
     expect(call.body.model).toBe("gpt-image-2.5");
     expect(call.body.n).toBe(1);
@@ -175,7 +176,67 @@ describe("image editing", () => {
   });
 });
 
-describe("reference upload", () => {
+describe("generation retry semantics", () => {
+  it("never retries an edit with a body that lost the reference image", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      // First attempt produces no image, which used to trigger the reduced retry.
+      return bodies.length === 1
+        ? jsonResponse({ data: [] })
+        : jsonResponse({ data: [{ url: "https://cdn.test/out.png" }] });
+    });
+    const error = await editImage(
+      CONFIG,
+      { prompt: "restyle", images: ["https://gateway.test/v1/images/uploads/1"], size: "1024x1536" },
+      "edit-1",
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error.code).toBe("provider_no_image");
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].images).toEqual([{ image_url: "https://gateway.test/v1/images/uploads/1" }]);
+  });
+
+  it("retries generation once without the transparency field, keeping the same key", async () => {
+    const calls: { body: Record<string, unknown>; key: string | null }[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      calls.push({
+        body: JSON.parse(String(init.body)),
+        key: new Headers(init.headers).get("idempotency-key"),
+      });
+      return calls.length === 1
+        ? jsonResponse({ error: { code: "upstream_total_timeout", message: "生图任务超时" } }, 400)
+        : jsonResponse({ data: [{ url: "https://cdn.test/final.png" }] });
+    });
+    const result = await generateImage(
+      CONFIG,
+      { prompt: "a cat", size: "1024x1024", background: "transparent" },
+      "gen-1",
+    );
+    expect(result.urls).toEqual(["https://cdn.test/final.png"]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].body.background).toBe("transparent");
+    expect(calls[1].body.background).toBeUndefined();
+    // Same key both times: one logical generation, one billed job.
+    expect(calls[0].key).toBe("gen-1");
+    expect(calls[1].key).toBe("gen-1");
+  });
+
+  it("does not retry when the caller cancelled locally", async () => {
+    const calls: number[] = [];
+    vi.stubGlobal("fetch", async () => {
+      calls.push(1);
+      const abort = new Error("aborted");
+      abort.name = "AbortError";
+      throw abort;
+    });
+    const error = await generateImage(CONFIG, { prompt: "x" }, "gen-2").catch((e) => e);
+    expect(error.code).toBe("provider_timeout");
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("uploaded reference", () => {
   it("posts raw bytes with the image content type", async () => {
     let observed: { url: string; type: string | null; bytes: number } | null = null;
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {

@@ -2,6 +2,7 @@
 import type { FunctionContext } from "../../_lib/http";
 import { fail } from "../../_lib/http";
 import type { AssetRow } from "../../_lib/projects";
+import { externalUrlOf } from "../../_lib/imageHost";
 
 function parseRange(header: string | null, size: number): { offset: number; length: number } | null {
   if (!header) return null;
@@ -25,6 +26,21 @@ export async function onRequest(context: FunctionContext): Promise<Response> {
     .bind(id)
     .first<AssetRow>();
   if (!row) return fail(404, "not_found", "文件不存在");
+
+  // An asset whose bytes live on an external host: keep the same public URL so
+  // every consumer (canvas, published page, export) keeps working unchanged.
+  const external = externalUrlOf(row.object_key);
+  if (external) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: external,
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+        "access-control-allow-origin": "*",
+      },
+    });
+  }
 
   const rangeHeader = context.request.headers.get("range");
   const range = parseRange(rangeHeader, row.size);

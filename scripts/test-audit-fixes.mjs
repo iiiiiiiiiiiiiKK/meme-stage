@@ -1,102 +1,142 @@
 import { chromium } from "@playwright/test";
 
-// Regression probe for the audit fixes:
-// 1) pause must continue the same line (audio suspended, not restarted)
-// 2) deleting a cue mid-run must not skip or repeat the survivors
-// 3) templates must re-flow the cast inside the new stage
-// 4) the inOrder recipe must persist its whole chain
+// Verifies the two audit fixes that are only observable in the browser:
+//  1. batch「保存到本机素材」关闭 → 结果不进素材库，但导出仍然可用
+//  2. 素材库批量加入画布后 → 跳到编辑器，而不是停在原地
 const base = "https://meme-stage.pages.dev";
-const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
-const context = await browser.newContext({ viewport: { width: 1500, height: 950 } });
-const page = await context.newPage();
+const browser = await chromium.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader"] });
+const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text().slice(0, 160)));
 
-// a 2s clip lets pause land in the middle of the first sentence
-await page.addInitScript(() => {
-  window.__plays = [];
-  window.__pauses = 0;
-  window.__resumes = 0;
-  const realPlay = HTMLMediaElement.prototype.play;
-  const realPause = HTMLMediaElement.prototype.pause;
-  HTMLMediaElement.prototype.play = function () {
-    window.__plays.push(this.currentSrc || this.src);
-    window.__resumes += window.__plays.length > 1 ? 1 : 0;
-    return realPlay.call(this);
-  };
-  HTMLMediaElement.prototype.pause = function () {
-    if (!this.paused) window.__pauses += 1;
-    return realPause.call(this);
-  };
-});
+const countVariants = (includeEphemeral) =>
+  page.evaluate(async (include) => {
+    const db = await new Promise((res, rej) => {
+      const req = indexedDB.open("meme-stage-stickers", 1);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    const rows = await new Promise((res) => {
+      const tx = db.transaction("variants", "readonly");
+      const req = tx.objectStore("variants").getAll();
+      req.onsuccess = () => res(req.result);
+    });
+    return include ? rows.length : rows.filter((r) => !r.ephemeral).length;
+  }, includeEphemeral);
 
-await page.goto(`${base}/editor`, { waitUntil: "domcontentloaded" });
-await page.waitForSelector('[data-testid="canvas"] canvas');
-for (let i = 0; i < 3; i++) {
-  await page.getByRole("button", { name: "随机熟人" }).click();
-  await page.waitForTimeout(450);
+await page.goto(`${base}/studio/batch`, { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(1500);
+
+const saveSwitch = page.getByRole("switch", { name: /完成后保存到本机素材/ });
+await saveSwitch.waitFor({ state: "visible", timeout: 20000 });
+if ((await saveSwitch.getAttribute("aria-checked")) !== "false") await saveSwitch.click();
+await page.waitForTimeout(300);
+console.log("save switch off:", (await saveSwitch.getAttribute("aria-checked")) === "false");
+
+await page.evaluate(async () => {
+  const make = async (label, hue) => {
+    const c = document.createElement("canvas");
+    c.width = 320;
+    c.height = 380;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = `hsl(${hue}, 30%, 30%)`;
+    ctx.fillRect(0, 0, 320, 380);
+    ctx.fillStyle = `hsl(${hue}, 60%, 76%)`;
+    ctx.beginPath();
+    ctx.arc(160, 140, 70, 0, Math.PI * 2);
+    ctx.fill();
+    const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+    return new File([blob], label, { type: "image/png" });
+  };
+  const zone = [...document.querySelectorAll("label")].find((el) => el.textContent?.includes("拖入图片"));
+  const dt = new DataTransfer();
+  dt.items.add(await make("tmp.png", 200));
+  zone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+});
+await page.waitForTimeout(2500);
+await page.getByRole("button", { name: "开始处理" }).click();
+
+const jobState = () =>
+  page.evaluate(async () => {
+    const db = await new Promise((res) => {
+      const req = indexedDB.open("meme-stage-stickers");
+      req.onsuccess = () => res(req.result);
+    });
+    const rows = await new Promise((res) => {
+      const tx = db.transaction("batches", "readonly");
+      const req = tx.objectStore("batches").getAll();
+      req.onsuccess = () => res(req.result);
+    });
+    return rows.flatMap((job) => job.items.map((i) => i.stage));
+  });
+
+for (let i = 0; i < 60; i++) {
+  await page.waitForTimeout(2000);
+  const stages = await jobState();
+  if (stages.length > 0 && stages.every((s) => s === "done" || s === "failed")) break;
 }
-await page.waitForTimeout(1200);
+console.log("item stages:", await jobState());
 
-// ---- fix 1: template reflow ----------------------------------------------
-await page.getByRole("button", { name: /^模板/ }).first().click();
-await page.waitForTimeout(300);
-await page.getByRole("button", { name: /群聊截图/ }).click();
-await page.getByRole("button", { name: "套用到当前作品" }).click();
-await page.waitForTimeout(900);
-const layout = await page.evaluate(() => {
-  const keys = Object.keys(localStorage).filter((k) => k.startsWith("ms.draft.") && k !== "ms.draft.index");
-  const items = keys.map((k) => JSON.parse(localStorage.getItem(k)));
-  const p = items.sort((a, b) => b.savedAt - a.savedAt)[0].project;
-  const cast = p.elements.filter((el) => el.type === "character");
-  return {
-    stage: { w: p.width, h: p.height },
-    rects: cast.map((el) => ({ x: Math.round(el.x), y: Math.round(el.y), w: Math.round(el.width), h: Math.round(el.height) })),
-  };
+const all = await countVariants(true);
+const visible = await countVariants(false);
+console.log("variants on disk:", all, "| visible in library:", visible);
+console.log("ephemeral hidden:", all > 0 && visible === 0);
+console.log("zip still enabled:", await page.getByRole("button", { name: "导出 ZIP" }).isEnabled());
+
+// library import must land on the editor
+await page.goto(`${base}/assets`, { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(2500);
+
+// seed one visible sticker so there is something to import
+await page.evaluate(async () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 200;
+  canvas.height = 200;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#66ddff";
+  ctx.beginPath();
+  ctx.arc(100, 100, 80, 0, Math.PI * 2);
+  ctx.fill();
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+  const db = await new Promise((res, rej) => {
+    const req = indexedDB.open("meme-stage-stickers", 1);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  await new Promise((res, rej) => {
+    const tx = db.transaction("variants", "readwrite");
+    tx.objectStore("variants").put({
+      id: "stk_nav_probe",
+      sourceId: "src_nav",
+      maskId: "msk_nav",
+      kind: "local-cutout",
+      name: "导航探测贴纸",
+      width: 200,
+      height: 200,
+      byteSize: blob.size,
+      mime: "image/png",
+      outline: { enabled: true, thickness: 8, color: "#fff", layers: 2, secondColor: "#111", secondThickness: 3 },
+      mode: "head",
+      warnings: [],
+      createdAt: Date.now(),
+      blob,
+      thumb: blob,
+    });
+    tx.oncomplete = () => res(null);
+    tx.onerror = () => rej(tx.error);
+  });
 });
-const inside = layout.rects.every(
-  (r) => r.x >= 0 && r.y >= 0 && r.x + r.w <= layout.stage.w + 1 && r.y + r.h <= layout.stage.h + 1,
-);
-console.log("template reflow:", layout.stage, layout.rects, "allInside:", inside);
+await page.reload({ waitUntil: "domcontentloaded" });
+await page.waitForTimeout(2500);
 
-// ---- fix 2: recipe chain persistence -------------------------------------
-await page.getByRole("button", { name: "批量", exact: true }).click();
-await page.waitForTimeout(400);
-await page.getByLabel("互动配方").selectOption("inOrder");
-await page.getByRole("button", { name: "一键生成互动" }).click();
-await page.waitForTimeout(1200);
-const chain = await page.evaluate(() => {
-  const keys = Object.keys(localStorage).filter((k) => k.startsWith("ms.draft.") && k !== "ms.draft.index");
-  const items = keys.map((k) => JSON.parse(localStorage.getItem(k)));
-  const p = items.sort((a, b) => b.savedAt - a.savedAt)[0].project;
-  const ids = new Set(p.events.map((e) => e.id));
-  return {
-    events: p.events.length,
-    dangling: p.events.filter((e) => e.nextEventId && !ids.has(e.nextEventId)).length,
-  };
-});
-console.log("inOrder chain:", chain);
-
-// ---- fix 3: pause / resume ---------------------------------------------
-await page.getByRole("button", { name: /^剧本/ }).first().click();
+await page.getByLabel("选择 导航探测贴纸").click();
 await page.waitForTimeout(300);
-const create = page.getByRole("button", { name: "创建剧本" });
-if (await create.count()) await create.click();
-await page.waitForTimeout(600);
-await page.getByRole("button", { name: "试演" }).click();
-await page.waitForTimeout(900);
-await page.getByTestId("performance-play").click();
-await page.waitForTimeout(700);
-const before = await page.evaluate(() => ({ plays: window.__plays.length, pauses: window.__pauses }));
-await page.getByTestId("performance-play").click(); // pause
-await page.waitForTimeout(900);
-const paused = await page.evaluate(() => ({ plays: window.__plays.length, pauses: window.__pauses }));
-await page.getByTestId("performance-play").click(); // resume
-await page.waitForTimeout(900);
-const after = await page.evaluate(() => ({ plays: window.__plays.length, pauses: window.__pauses }));
-console.log("pause/resume:", { before, paused, after });
-console.log("paused suspended audio:", paused.pauses > before.pauses);
-console.log("resume did not restart the clip:", after.plays === paused.plays);
+await page.getByRole("button", { name: /加入画布（1）/ }).click();
+await page.waitForTimeout(6000);
+
+const landing = await page.evaluate(() => location.pathname);
+console.log("path after library import:", landing);
+console.log("navigated to editor:", landing.startsWith("/editor"));
 console.log("errors", errors.slice(0, 4));
 await browser.close();

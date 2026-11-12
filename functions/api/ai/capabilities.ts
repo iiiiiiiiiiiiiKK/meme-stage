@@ -7,7 +7,7 @@
  * pretends an image API exists.
  */
 import type { FunctionContext } from "../../_lib/http";
-import { fail, json } from "../../_lib/http";
+import { json } from "../../_lib/http";
 import { publicCapabilities, readConfig } from "../../_lib/imageProvider";
 
 export async function onRequestGet(context: FunctionContext): Promise<Response> {
@@ -20,10 +20,21 @@ export async function onRequestGet(context: FunctionContext): Promise<Response> 
       headers: { authorization: `Bearer ${config.apiKey}` },
     });
     if (!response.ok) {
+      // A rejected key is a configuration fault; a 429/5xx is transient. Both must
+      // reach the UI as *unusable but configured*, never as a working feature.
+      const reason =
+        response.status === 401 || response.status === 403
+          ? "图像服务拒绝了当前密钥，请在服务端更新 IMAGE_API_KEY"
+          : response.status === 429
+            ? "图像服务限流中，请稍后重试"
+            : `图像服务返回 ${response.status}，暂时不可用`;
       return json({
         ...publicCapabilities(config),
+        configured: true,
         verified: false,
-        reason: `图像服务返回 ${response.status}，请检查密钥是否有效`,
+        models: [],
+        reason,
+        retryable: response.status !== 401 && response.status !== 403,
       });
     }
     const payload = (await response.json()) as { data?: Array<{ id?: string }> };
@@ -31,11 +42,12 @@ export async function onRequestGet(context: FunctionContext): Promise<Response> 
     const usable = config.models.filter((model) => available.has(model));
     if (usable.length === 0) {
       return json({
-        configured: false,
+        configured: true,
         models: [],
         sizes: publicCapabilities(config).sizes,
         verified: false,
         reason: `账号里没有可用模型：允许列表为 ${config.models.join(", ")}`,
+        retryable: false,
       });
     }
     return json({
@@ -43,6 +55,15 @@ export async function onRequestGet(context: FunctionContext): Promise<Response> 
       verified: true,
     });
   } catch {
-    return fail(502, "provider_unreachable", "无法连接图像服务，请稍后重试");
+    // Network hiccup or gateway outage: report it as retryable instead of
+    // pretending the feature is unconfigured forever.
+    return json({
+      ...publicCapabilities(config),
+      configured: true,
+      verified: false,
+      models: [],
+      reason: "暂时无法连接图像服务，请稍后重试",
+      retryable: true,
+    });
   }
 }

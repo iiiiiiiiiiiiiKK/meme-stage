@@ -18,10 +18,13 @@ export interface AiModel {
 
 export interface AiCapabilities {
   configured: boolean;
+  /** the server actually reached the provider and the key works */
   verified?: boolean;
   models: AiModel[];
   sizes: string[];
   reason: string | null;
+  /** a transient failure worth retrying; a rejected key is not */
+  retryable?: boolean;
 }
 
 export interface AiResult {

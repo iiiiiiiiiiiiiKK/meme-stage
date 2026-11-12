@@ -142,6 +142,13 @@ export interface StickerVariant {
    */
   cloudAssetId?: string;
   cloudUrl?: string;
+  /**
+   * 批量任务里的临时渲染结果。
+   *
+   * 导出 ZIP / 加入画布都需要真实字节，所以字节必须落盘；但当用户关掉「完成后
+   * 保存到本机素材」时，它不应该出现在素材库里，否则那个开关等于没作用。
+   */
+  ephemeral?: boolean;
   createdAt: number;
 }
 

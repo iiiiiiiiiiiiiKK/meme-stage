@@ -11,7 +11,7 @@ import type { FunctionContext } from "../../_lib/http";
 import { editorHash, fail, json, rateLimit } from "../../_lib/http";
 import { ProviderError, fetchGenerated, generateImage, readConfig } from "../../_lib/imageProvider";
 import { sniff } from "../../_lib/files";
-import { storeGeneratedImage } from "../../_lib/generatedAsset";
+import { GeneratedAssetError, storeGeneratedImage } from "../../_lib/generatedAsset";
 
 const MAX_PROMPT = 800;
 
@@ -82,6 +82,7 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
     });
   } catch (error) {
     if (error instanceof ProviderError) return fail(error.status, error.code, error.message);
+    if (error instanceof GeneratedAssetError) return fail(error.status, error.code, error.message);
     console.error("ai generate failed", error);
     return fail(500, "internal", "生成失败，请稍后重试");
   }

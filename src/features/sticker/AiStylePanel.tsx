@@ -10,7 +10,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Field, Select, Spinner, TextArea, cn, toast } from "../../components/ui";
 import { Icon } from "../../components/Icon";
-import { aiApi, usageSummary, type AiCapabilities } from "./ai";
+import { aiApi, usageSummary } from "./ai";
+import { aiReady, useAiCapabilities } from "./useAiCapabilities";
 import type { AssetRecord } from "../../lib/types";
 
 const STYLE_PRESETS: { id: string; label: string; prompt: string }[] = [
@@ -58,7 +59,7 @@ export function AiStylePanel({
   sourceBlob: Blob | null;
   onResult: (asset: AssetRecord) => void;
 }) {
-  const [caps, setCaps] = useState<AiCapabilities | null>(null);
+  const { caps, loading: capsLoading, canRetry, refresh: refreshCaps } = useAiCapabilities();
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState(STYLE_PRESETS[0].id);
   const [custom, setCustom] = useState("");
@@ -66,23 +67,13 @@ export function AiStylePanel({
   const [busy, setBusy] = useState(false);
   const [lastUsage, setLastUsage] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [transparent, setTransparent] = useState(false);
 
+  // Pick a default model as soon as the probe reports what the account can use.
   useEffect(() => {
-    let alive = true;
-    void aiApi
-      .capabilities()
-      .then((value) => {
-        if (!alive) return;
-        setCaps(value);
-        if (value.models[0]) setModel((current) => current || value.models[0].id);
-      })
-      .catch(() => {
-        if (alive) setCaps({ configured: false, models: [], sizes: [], reason: "无法读取图像服务状态" });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    const first = caps?.models[0]?.id;
+    if (first) setModel((current) => current || first);
+  }, [caps]);
 
   const run = useCallback(async () => {
     if (!sourceBlob) {
@@ -104,7 +95,12 @@ export function AiStylePanel({
         prompt,
         model: model || undefined,
         size: "1024x1024",
-        background: "transparent",
+        // Transparency is what makes the output usable as a sticker, but this
+        // gateway times out on it (~196s, measured). The edit request is not
+        // retried server-side — a retry that dropped the reference would return an
+        // unrelated picture — so the slow path stays opt-in and the default is a
+        // plain restyle the user can cut out locally afterwards.
+        background: transparent ? "transparent" : undefined,
         idempotencyKey: `${variantId}:${Date.now()}`,
       });
       setLastUsage(usageSummary(result.usage));
@@ -115,7 +111,7 @@ export function AiStylePanel({
     } finally {
       setBusy(false);
     }
-  }, [confirmed, custom, model, onResult, preset, sourceBlob, variantId, variantName]);
+  }, [confirmed, custom, model, onResult, preset, sourceBlob, transparent, variantId, variantName]);
 
   if (!caps) {
     return (
@@ -125,13 +121,24 @@ export function AiStylePanel({
     );
   }
 
-  if (!caps.configured) {
+  if (!aiReady(caps)) {
+    const configured = caps.configured;
     return (
       <div className="rounded border border-line/70 bg-ink px-2 py-1.5 text-[9.5px] leading-relaxed text-mute">
         <div className="mb-0.5 flex items-center gap-1 font-semibold text-paper">
-          <Icon name="sparkles" size={10} /> AI 风格版（未启用）
+          <Icon name="sparkles" size={10} /> AI 风格版（{configured ? "暂时不可用" : "未启用"}）
         </div>
-        {caps.reason ?? "服务端没有配置图像生成服务"}
+        {caps.reason ?? (configured ? "图像服务暂时不可用" : "服务端没有配置图像生成服务")}
+        {canRetry ? (
+          <button
+            type="button"
+            onClick={refreshCaps}
+            disabled={capsLoading}
+            className="mt-1 rounded border border-line px-1.5 py-0.5 text-[9px] text-mute hover:text-paper disabled:opacity-50"
+          >
+            {capsLoading ? "检查中…" : "重新检查"}
+          </button>
+        ) : null}
         <div className="mt-1 text-[9px]">本机抠图与描边不受影响，可以继续使用。</div>
       </div>
     );
@@ -187,6 +194,16 @@ export function AiStylePanel({
               className="text-[10.5px]"
             />
           </Field>
+
+          <label className="flex items-start gap-1.5 text-[9px] leading-relaxed text-mute">
+            <input
+              type="checkbox"
+              checked={transparent}
+              onChange={(e) => setTransparent(e.target.checked)}
+              className="mt-0.5 h-3 w-3 accent-[#b6ff3c]"
+            />
+            <span>要求透明背景（较慢，容易超时；不需要时留空，生成后本机抠图更稳）</span>
+          </label>
 
           <label className="flex items-start gap-1.5 text-[9px] leading-relaxed text-mute">
             <input

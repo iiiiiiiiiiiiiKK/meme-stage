@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-170%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-188%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -87,12 +87,15 @@
 
 - **默认关闭、显式开启**：没有配置 `IMAGE_API_KEY` 时接口返回 `configured:false`，面板显示「未启用」并给出原因，功能不假装可用。
 - **密钥只在服务端**：浏览器只调用本项目的 `/api/ai/*`，密钥存在 Cloudflare Pages secret 里，不进入前端包、不写 LocalStorage、不写仓库。
-- **真实验证**：`GET /api/ai/capabilities` 用真实密钥探测 `/v1/models`，只把账号里确实可用的模型列出来（当前 `gpt-image-2.5` / `gpt-image-2.6`）。
-- **结果落库**：生成的图片不走外链，服务端下载后写入 R2 + D1，返回和上传素材一样的 `/api/files/:id`，不会隔天变成 404。
+- **真实验证**：`GET /api/ai/capabilities` 用真实密钥探测 `/v1/models`，只把账号里确实可用的模型列出来（当前 `gpt-image-2.5` / `gpt-image-2.6`）。密钥失效、被限流或网络不通时会明确显示「暂时不可用」并提供「重新检查」，不会永久变成「未启用」。
+- **可选图床**：`IMAGE_HOST=imgbb` + `IMGBB_API_KEY` 时，生成结果上传到图床，`R2` 只保留用户自己上传的素材；默认仍是 `R2`。两种方式对外都是同一个 `/api/files/:id`（图床模式是 302 跳转），画布和发布页无需改动。
+- **结果落库**：生成的图片由服务端下载后写入 D1，并记录**真实像素尺寸**与**托管后的真实字节数**（图床会重编码，实测 1.1MB 上传后实际 0.36MB）。
 - **文字生成贴纸**：题材预设 + 自定义提示词 + 模型选择，预留在本机素材库中（`kind: ai-generate`），之后可以用本地抠图加描边。
 - **风格化已有贴纸**：5 种风格预设，把当前贴纸作为参考图上传后重绘；结果另存为新版本（`kind: ai-style`），原图与本地抠图都不被覆盖。
 - **成本与失败都直说**：面板显示真实 token 用量（不编造价格），失败时返回具体错误码，不会拿占位图冒充成功。
-- **透明背景默认关闭**：实测该网关在 `background:"transparent"` 下会稳定 196s 上游超时，同一提示词不加这个字段 15s 出图，所以默认走「先生成、再本机抠图」；服务端在超时/空图时会自动用最小参数重试一次。
+- **透明背景默认关闭**：实测该网关在 `background:"transparent"` 下会稳定 196s 上游超时，同一提示词不加这个字段 15s 出图，所以默认走「先生成、再本机抠图」。
+- **重试不丢参考图**：只有「文字生图」会在超时/空图时用去掉透明参数的最小请求重试一次，且**复用同一个幂等键**（不会重复计费）。风格化请求**从不重试**——重试时丢掉 `images` 会返回一张与用户贴纸无关的图，却仍被当成风格版。
+- **额度与限速对齐**：生成结果和普通上传共用 8MB 单文件上限与 600 个素材/账号配额，AI 不是绕过通道。
 
 ### 剧本演出（小品模式）
 
@@ -331,7 +334,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（170 个，全部通过）
+### 单元测试（188 个，全部通过）
 
 ```bash
 npm test
@@ -357,7 +360,10 @@ npm test
 - 口型位置：长宽比默认值、手标坐标夹取、翻转镜像、旋转跟随、屏幕换算、schema 往返与脏值丢弃。
 - 贴纸蒙版：覆盖率统计、擦除/恢复画笔、软硬笔刷边缘、越界裁剪、形态学膨胀/腐蚀、模糊、交集、收紧、噪点清理。
 - 贴纸领域模型：7 种裁切模式与标签、面向人脸的裁切判定、默认双层描边配置、队列项形状。
+- 图床托管：默认 R2、缺 key 时回退 R2、external key 往返与非 https 拒绝、urlencoded 上传体、以 HTTP HEAD 读取真实托管字节数、HEAD 失败回退、上游错误透传、非 https 地址拒绝。
+- 生成结果入库：与上传相同的 8MB 上限、与上传共享的 600 条配额、配额查询失败仍保存付费结果、空图拒绝、尺寸上限一致性。
 - 图像服务 Provider：配置缺失判定、base URL 规范化、模型白名单、公开能力不泄露密钥、空提示词/越权模型提前拒绝、尺寸兜底、上游错误透传、空图与坏 JSON 视为失败、参考图必须 http(s)、原始字节上传的 content-type、结果下载的大小与来源校验。
+- 重试语义：风格化遇到空图**不再重试**（会丢参考图）、文字生图重试时去掉透明参数并复用同一幂等键、本地主动取消不触发重试。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 
@@ -410,6 +416,11 @@ node scripts/test-unified-library.mjs     # 素材库：本机/云端标记、�
 | AI 面板门禁 | ✅ 未勾选确认时按钮禁用，勾选后才可点击 |
 | AI 结果入库 | ✅ `kind: ai-generate` / `ai-style`，原图与本地抠图不被覆盖 |
 | 素材库双作用域 | ✅ 本机/云端标记、类型筛选、搜索、多选、云端删除 |
+| 图床托管（imgbb） | ✅ `/api/files/:id` 302 → `i.ibb.co`，跟随跳转 200 `image/png`，字节数与 D1 记录一致（363256 = 363256） |
+| 生成尺寸元数据 | ✅ 从 PNG 头读出真实 1024×1024，而不是 null |
+| 外部素材删除 | ✅ 返回 `{"ok":true,"external":true}`，不误删 R2 对象 |
+| 批量「不保存」开关 | ✅ 关闭后磁盘有 1 个临时结果、素材库 0 个，ZIP 仍可用 |
+| 素材库加入画布后跳转 | ✅ `/assets` → `/editor` |
 
 2026-10-27 的实际结果：
 

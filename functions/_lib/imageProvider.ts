@@ -103,34 +103,26 @@ export class ProviderError extends Error {
   }
 }
 
+/**
+ * One logical generation = one idempotency key.
+ *
+ * Retries reuse the same key on purpose: a timeout can mean the gateway already
+ * accepted the job, and a fresh key would let it bill a second image. Callers that
+ * cannot tolerate that (see `editImage`) simply do not retry.
+ */
 async function callProvider(
   config: ImageProviderConfig,
   path: string,
-  body: Record<string, unknown>,
+  attempts: Record<string, unknown>[],
   idempotencyKey: string,
 ): Promise<ProviderResult> {
-  /**
-   * Two attempts, because this gateway is not reliable: asking for a transparent
-   * background (or an explicit output format) reliably ends in
-   * `upstream_total_timeout` after ~196s, while the same prompt without those
-   * fields finishes in ~15s. A 200 with no image, a non-JSON body, or a timeout
-   * therefore gets one retry with the minimal body — never a silent success and
-   * never a invented result.
-   */
-  const attempts: Record<string, unknown>[] = [
-    body,
-    {
-      model: body.model,
-      prompt: body.prompt,
-      n: 1,
-    },
-  ];
   let lastError: ProviderError | null = null;
   for (let index = 0; index < attempts.length; index++) {
     if (index > 0) {
-      // Drop fields the gateway struggles with before trying again.
+      // Only retry when the previous attempt provably produced nothing. A local
+      // abort is not in this set: we cancelled it ourselves, so the upstream state
+      // is unknown and retrying could double-charge.
       const retryable =
-        lastError?.code === "provider_timeout" ||
         lastError?.code === "provider_no_image" ||
         lastError?.code === "provider_bad_json" ||
         lastError?.code === "upstream_total_timeout" ||
@@ -138,7 +130,7 @@ async function callProvider(
       if (!retryable) throw lastError;
     }
     try {
-      return await callProviderOnce(config, path, attempts[index], `${idempotencyKey}-${index}`);
+      return await callProviderOnce(config, path, attempts[index], idempotencyKey);
     } catch (error) {
       if (!(error instanceof ProviderError)) throw error;
       lastError = error;
@@ -228,17 +220,22 @@ export async function generateImage(
   const size = ALLOWED_SIZES.includes((args.size ?? "") as ImageSize) ? args.size : "1024x1024";
 
   // Measured against the live gateway: `response_format`, `output_format` and
-  // `background` are the fields that push it into a 196s upstream timeout. They
-  // are only sent when the caller genuinely needs them (transparency), and the
-  // retry path in `callProvider` drops everything but model/prompt/n if they fail.
-  const body: Record<string, unknown> = {
+  // `background` are the fields that push it into a ~196s upstream timeout. The
+  // transparent variant is tried first when requested, then a minimal body is used
+  // as the fallback — generation without a reference is safe to retry, because a
+  // second image is still a superset of the user's intent and the UI shows the
+  // result it actually got.
+  const full: Record<string, unknown> = {
     model,
     prompt: prompt.slice(0, 1000),
     n: 1,
     size,
   };
-  if (args.background) body.background = args.background;
-  return callProvider(config, "/v1/images/generations", body, idempotencyKey);
+  if (args.background) full.background = args.background;
+
+  const minimal: Record<string, unknown> = { model, prompt: prompt.slice(0, 1000), n: 1, size };
+  const attempts = args.background ? [full, minimal] : [full];
+  return callProvider(config, "/v1/images/generations", attempts, idempotencyKey);
 }
 
 /**
@@ -259,17 +256,22 @@ export async function editImage(
   const model = resolveModel(config, args.model);
   const size = ALLOWED_SIZES.includes((args.size ?? "") as ImageSize) ? args.size : "1024x1024";
 
+  // Edit is never retried with a reduced body: the reference image *is* the
+  // request, so a retry that drops `images` would return an unrelated picture
+  // while the UI labels it a restyle of the user's sticker.
   return callProvider(
     config,
     "/v1/images/edits",
-    {
-      model,
-      prompt: prompt.slice(0, 1000),
-      images: images.map((url) => ({ image_url: url })),
-      n: 1,
-      size,
-      ...(args.background ? { background: args.background } : {}),
-    },
+    [
+      {
+        model,
+        prompt: prompt.slice(0, 1000),
+        images: images.map((url) => ({ image_url: url })),
+        n: 1,
+        size,
+        ...(args.background ? { background: args.background } : {}),
+      },
+    ],
     idempotencyKey,
   );
 }
@@ -338,7 +340,11 @@ export async function fetchGenerated(url: string): Promise<{ bytes: Uint8Array; 
     const contentType = response.headers.get("content-type") ?? "image/png";
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength === 0) throw new ProviderError(502, "result_empty", "生成的图片是空的");
-    if (buffer.byteLength > 20 * 1024 * 1024) throw new ProviderError(502, "result_too_large", "生成的图片太大");
+    // Bound the download before it ever reaches R2; the asset store applies the
+    // real user-facing limit and reports a precise error.
+    if (buffer.byteLength > 24 * 1024 * 1024) {
+      throw new ProviderError(502, "result_too_large", "生成的图片太大");
+    }
     return { bytes: new Uint8Array(buffer), contentType };
   } catch (error) {
     if (error instanceof ProviderError) throw error;

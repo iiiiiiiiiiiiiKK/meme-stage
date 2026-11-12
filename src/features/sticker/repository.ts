@@ -211,6 +211,8 @@ export async function putVariant(input: {
   outline: StickerVariant["outline"];
   mode: StickerVariant["mode"];
   warnings: string[];
+  /** hide from the library while still keeping the bytes for export/import */
+  ephemeral?: boolean;
   blob: Blob;
   thumb: Blob;
 }): Promise<StickerVariant> {
@@ -229,6 +231,7 @@ export async function putVariant(input: {
     outline: input.outline,
     mode: input.mode,
     warnings: input.warnings,
+    ephemeral: input.ephemeral,
     createdAt: Date.now(),
     blob: input.blob,
     thumb: input.thumb,
@@ -239,6 +242,19 @@ export async function putVariant(input: {
 }
 
 export async function listVariants(): Promise<StickerVariant[]> {
+  const database = await db();
+  const rows = (await database.getAll("variants")) as VariantRow[];
+  // Temporary batch renders stay on disk for ZIP export and canvas import, but
+  // they must not show up in the library — otherwise the "完成后保存到本机素材"
+  // switch would have no effect.
+  return rows
+    .filter((row) => !row.ephemeral)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(stripVariant);
+}
+
+/** Every variant, including the temporary batch renders. */
+export async function listAllVariants(): Promise<StickerVariant[]> {
   const database = await db();
   const rows = (await database.getAll("variants")) as VariantRow[];
   return rows.sort((a, b) => b.createdAt - a.createdAt).map(stripVariant);

@@ -7,10 +7,11 @@
  * different promises and the UI must not blur them.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button, EmptyState, Select, Spinner, cn, toast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { useAssets } from "../store/assets";
+import { useEditor } from "../store/editor";
 import { formatBytes } from "../lib/image";
 import { getVariantBlob, listSources, listVariants } from "../features/sticker/repository";
 import { importStickers } from "../features/sticker/bridge";
@@ -50,6 +51,8 @@ interface CloudRow {
 type Row = LocalRow | CloudRow;
 
 export function UnifiedLibrary() {
+  const navigate = useNavigate();
+  const projectId = useEditor((s) => s.projectId);
   const cloudAssets = useAssets((s) => s.items);
   const loadCloud = useAssets((s) => s.load);
   const cloudLoading = useAssets((s) => s.loading);
@@ -229,10 +232,13 @@ export function UnifiedLibrary() {
           : `已把 ${outcome.ok.length} 张贴纸加入画布`,
         outcome.failed.length > 0 ? "error" : "success",
       );
+      // Leaving the user on this page would hide the result: the elements exist in
+      // the editor store, not on screen here. Same landing point as the batch panel.
+      if (outcome.ok.length > 0) navigate(projectId ? `/editor/${projectId}` : "/editor");
     } finally {
       setImporting(false);
     }
-  }, [rows, selected]);
+  }, [navigate, projectId, rows, selected]);
 
   return (
     <div className="min-h-full bg-ink">

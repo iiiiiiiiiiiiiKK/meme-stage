@@ -12,7 +12,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Field, Select, Spinner, TextArea, cn, toast } from "../../components/ui";
 import { Icon } from "../../components/Icon";
-import { aiApi, usageSummary, type AiCapabilities } from "./ai";
+import { aiApi, usageSummary } from "./ai";
+import { aiReady, useAiCapabilities } from "./useAiCapabilities";
 import { decodeToCanvas } from "./engine/image";
 import { putSource, putMask, putVariant } from "./repository";
 import { thumbnail } from "./processor";
@@ -47,7 +48,7 @@ export function AiGeneratePanel({
   /** called after the result has been written into the local library */
   onSaved: (variant: StickerVariant) => void;
 }) {
-  const [caps, setCaps] = useState<AiCapabilities | null>(null);
+  const { caps, loading: capsLoading, canRetry, refresh: refreshCaps } = useAiCapabilities();
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState(PROMPT_PRESETS[0].id);
   const [custom, setCustom] = useState("");
@@ -63,22 +64,11 @@ export function AiGeneratePanel({
   const [preview, setPreview] = useState<string | null>(null);
   const [lastAsset, setLastAsset] = useState<{ url: string; name: string } | null>(null);
 
+  // Default the model picker once the probe reports what the account can use.
   useEffect(() => {
-    let alive = true;
-    void aiApi
-      .capabilities()
-      .then((value) => {
-        if (!alive) return;
-        setCaps(value);
-        if (value.models[0]) setModel((current) => current || value.models[0].id);
-      })
-      .catch(() => {
-        if (alive) setCaps({ configured: false, models: [], sizes: [], reason: "无法读取图像服务状态" });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    const first = caps?.models[0]?.id;
+    if (first) setModel((current) => current || first);
+  }, [caps]);
 
   const previewUrl = lastAsset?.url ?? null;
   useEffect(() => {
@@ -165,7 +155,7 @@ export function AiGeneratePanel({
     }
   }, [lastAsset, onSaved]);
 
-  if (!caps) {
+  if (!caps || (capsLoading && !caps)) {
     return (
       <div className="flex items-center gap-1.5 text-[10px] text-mute">
         <Spinner size={10} /> 读取图像服务…
@@ -173,13 +163,26 @@ export function AiGeneratePanel({
     );
   }
 
-  if (!caps.configured) {
+  // Configured but unusable: a revoked key, a rate-limited gateway or a network
+  // hiccup. Say which, and offer a retry instead of looking permanently disabled.
+  if (!aiReady(caps)) {
+    const configured = caps.configured;
     return (
       <div className="rounded border border-line/70 bg-ink px-2 py-1.5 text-[9.5px] leading-relaxed text-mute">
         <div className="mb-0.5 flex items-center gap-1 font-semibold text-paper">
-          <Icon name="sparkles" size={10} /> 文字生成贴纸（未启用）
+          <Icon name="sparkles" size={10} /> 文字生成贴纸（{configured ? "暂时不可用" : "未启用"}）
         </div>
-        {caps.reason ?? "服务端没有配置图像生成服务"}
+        {caps.reason ?? (configured ? "图像服务暂时不可用" : "服务端没有配置图像生成服务")}
+        {canRetry ? (
+          <button
+            type="button"
+            onClick={refreshCaps}
+            disabled={capsLoading}
+            className="mt-1 rounded border border-line px-1.5 py-0.5 text-[9px] text-mute hover:text-paper disabled:opacity-50"
+          >
+            {capsLoading ? "检查中…" : "重新检查"}
+          </button>
+        ) : null}
       </div>
     );
   }
