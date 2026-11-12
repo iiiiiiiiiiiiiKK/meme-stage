@@ -12,6 +12,7 @@ import type {
 } from "../../lib/types";
 import { InteractionRunner, type RuntimeHooks } from "../../lib/engine";
 import { PerformanceRunner, type PerformanceHooks, type PerformanceState } from "../../lib/performance";
+import { usePlayback } from "../../store/playback";
 import { audioEngine } from "../../lib/audio";
 import { chooseVoice } from "../../lib/voice";
 import { bubbleAnchorPoint } from "../../lib/bubblePosition";
@@ -338,8 +339,14 @@ export function VisitorStage({
       clearEffects,
       lipFlap: (actorId) => setLipFlapId(actorId),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      onCue: (index) => setActiveCue(index),
-      onState: (state) => setPerfState(state),
+      onCue: (index) => {
+        setActiveCue(index);
+        usePlayback.getState().set({ index });
+      },
+      onState: (state) => {
+        setPerfState(state);
+        usePlayback.getState().set({ state });
+      },
       onError: (message) => onError?.(message),
     }),
     [onError, spawnEffect, clearEffects],
@@ -366,6 +373,7 @@ export function VisitorStage({
     audioEngine.markUnlocked();
     setInteracted(true);
     setHintVisible(false);
+    usePlayback.getState().set({ performanceId: performance.id, index: -1 });
     void perfRunnerRef.current?.play(performance);
   }, [performance]);
 

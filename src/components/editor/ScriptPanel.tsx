@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { useEditor } from "../../store/editor";
 import { useAssets } from "../../store/assets";
-import { Button, IconButton, Select, TextInput, toast } from "../ui";
+import { Button, IconButton, Select, TextInput, cn, toast } from "../ui";
 import { Icon } from "../Icon";
 import { ANIMATION_LABELS, ANIMATIONS, makeCue, makePerformance } from "../../lib/defaults";
 import { parseScript, stringifyScript, SCRIPT_TEMPLATE } from "../../lib/script";
+import { usePlayback } from "../../store/playback";
 import type { AnimationName, CueEffect, PerformanceCue } from "../../lib/types";
 
 const EFFECT_ANCHORS: { id: CueEffect["anchor"]; label: string }[] = [
@@ -30,6 +31,8 @@ export function ScriptPanel({ onTest }: { onTest: () => void }) {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const playbackState = usePlayback((s) => s.state);
+  const playbackIndex = usePlayback((s) => s.index);
 
   const createPerformance = () => {
     if (characters.length === 0) {
@@ -224,11 +227,16 @@ export function ScriptPanel({ onTest }: { onTest: () => void }) {
               const actor = project.elements.find((el) => el.id === cue.actorId);
               const voices = actor?.character?.voices ?? [];
               const clip = voices.find((v) => v.id === cue.clipId);
+              const speaking = playbackState !== "idle" && playbackIndex === index;
               return (
                 <div
                   key={cue.id}
-                  className="rounded-md border border-line bg-ink/60 p-1.5"
+                  className={cn(
+                    "rounded-md border bg-ink/60 p-1.5 transition-colors",
+                    speaking ? "border-neon/70 bg-neon/5" : "border-line",
+                  )}
                   data-testid="script-cue"
+                  data-speaking={speaking ? "true" : undefined}
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-ink-3 text-[10px] font-bold text-neon">
