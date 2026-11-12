@@ -47,6 +47,16 @@ function TopNav() {
           <Link to="/library" className="hover:text-paper">我的作品</Link>
         </nav>
         <div className="ml-auto flex items-center gap-1.5">
+          {/* The nav above is hidden below `sm`, which left phones with no route
+              into the sticker studio at all. Keep one compact entry there. */}
+          <Link
+            to="/studio/sticker"
+            className="flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-[11px] text-mute transition-colors hover:border-paper/40 hover:text-paper sm:hidden"
+            aria-label="贴纸工坊"
+          >
+            <Icon name="sparkles" size={13} />
+            贴纸工坊
+          </Link>
           <a
             href={X_URL}
             target="_blank"
@@ -112,6 +122,11 @@ function Hero() {
             <Link to="/p/demo">
               <Button variant="secondary" size="lg" icon="play">
                 先玩示例
+              </Button>
+            </Link>
+            <Link to="/studio/sticker">
+              <Button variant="outline" size="lg" icon="sparkles">
+                做个贴纸
               </Button>
             </Link>
             <span className="hidden items-center gap-1.5 text-[11px] text-mute sm:flex">
@@ -375,6 +390,9 @@ function Footer() {
         </div>
         <div className="grid grid-cols-2 gap-x-10 gap-y-2 text-[11px] text-mute sm:grid-cols-3">
           <Link to="/editor" className="hover:text-paper">开始创作</Link>
+          <Link to="/studio/sticker" className="hover:text-paper">贴纸工坊</Link>
+          <Link to="/studio/batch" className="hover:text-paper">批量工坊</Link>
+          <Link to="/assets" className="hover:text-paper">素材库</Link>
           <Link to="/library" className="hover:text-paper">我的作品</Link>
           <Link to="/p/demo" className="hover:text-paper">示例作品</Link>
           <a href={X_URL} target="_blank" rel="noreferrer noopener" className="hover:text-paper">作者 X</a>
