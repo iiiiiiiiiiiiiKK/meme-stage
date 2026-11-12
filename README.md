@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-112%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-120%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -81,6 +81,7 @@
 - **文件名即内容**：`猫猫头--我听不懂但是喵.png` 会自动得到人物名和台词；`老K-01.wav` / `老K--台词--02.wav` 按同名自动绑定到人物。
 - **底部批量面板**：表格列出所有人物的名称、语音数、台词、图层，可直接改名、搜索、按图层/名字/语音排序。
 - **批量操作**：统一命名前缀、批量写台词、统一气泡预设、统一音量、统一高度、按 6 种布局重新排布。
+- **人物清单导入**：CSV / JSON 按名字匹配已有角色，只更新写到的字段（`name,line,voicemode,bubble,volume,height`），不新增也不删除人物；未匹配的名字会单独提示。
 - **互动配方**：点谁谁说话 / 按顺序开麦 / 随机点名接梗 / 三轮对话 / 全员同时开口，一键生成事件。
 - **模板**：内置「全员开麦 / 群聊截图 / 群像海报 / Meme 墙 / 对话舞台」5 个舞台，也可把当前画布存成模板；套用只改画幅、背景、气泡、音量模式和人物高度，不动图片、语音和互动。
 
@@ -299,7 +300,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（112 个，全部通过）
+### 单元测试（120 个，全部通过）
 
 ```bash
 npm test
@@ -321,6 +322,7 @@ npm test
 - 模板：内置 5 个舞台、捕获结构不含素材与语音、套用保比例统一高度、可只换舞台不缩放人物。
 - 互动配方：5 种配方的触发者、链式 next、并行动作、缺语音忽略。
 - 动图元素：GIF / WebP / MP4 的 `animated` 标记、schema 白名单、非法 URL 拒绝。
+- 人物清单：CSV/JSON 解析、未知枚举忽略、按名匹配、比例保持、未匹配上报。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useEditor } from "../../store/editor";
 import { Button, Field, Select, Slider, TextInput, cn, toast } from "../ui";
 import { Icon } from "../Icon";
@@ -6,6 +6,7 @@ import { BUBBLE_PRESETS, makeBubble } from "../../lib/defaults";
 import { LAYOUT_LABELS, layoutElements, type LayoutMode } from "../../lib/layout";
 import { estimateSpeechSeconds } from "../../lib/deviceSpeech";
 import { buildRecipes, RECIPE_LABELS, type RecipeId } from "../../lib/recipes";
+import { applyCharacterRows, parseCharacterList } from "../../lib/characterList";
 import type { BubblePreset } from "../../lib/types";
 
 type SortKey = "z" | "name" | "voices";
@@ -27,6 +28,30 @@ export function BulkPanel() {
   const [layout, setLayout] = useState<LayoutMode>("grid");
   const [recipe, setRecipe] = useState<RecipeId>("everyoneSpeaks");
   const [filter, setFilter] = useState("");
+  const [listOpen, setListOpen] = useState(false);
+  const [listText, setListText] = useState("");
+  const listFileRef = useRef<HTMLInputElement | null>(null);
+
+  const importCharacterList = (text: string) => {
+    const parsed = parseCharacterList(text);
+    if (parsed.rows.length === 0) {
+      toast(parsed.errors[0] ?? "没有可用的行", "error");
+      return;
+    }
+    let missed: string[] = [];
+    mutate((draft) => {
+      missed = applyCharacterRows(draft.elements, parsed.rows);
+    }, true, "bulk-list-import");
+    setListOpen(false);
+    setListText("");
+    const applied = parsed.rows.length - missed.length;
+    toast(
+      missed.length > 0
+        ? `已更新 ${applied} 个人物，${missed.length} 个没匹配到：${missed[0]}`
+        : `已按清单更新 ${applied} 个人物`,
+      missed.length > 0 ? "info" : "success",
+    );
+  };
 
   const characters = useMemo(() => {
     const list = project.elements.filter((el) => el.type === "character");
@@ -329,6 +354,29 @@ export function BulkPanel() {
         <Button size="sm" variant="outline" icon="music" className="w-full" onClick={addTestVoice}>
           补一条设备朗读
         </Button>
+
+        <Button
+          size="sm"
+          variant="secondary"
+          icon="upload"
+          className="w-full"
+          onClick={() => setListOpen(true)}
+        >
+          导入人物清单（CSV / JSON）
+        </Button>
+        <input
+          ref={listFileRef}
+          type="file"
+          accept=".csv,.txt,.json,text/csv,application/json"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.currentTarget.value = "";
+            if (!file) return;
+            setListText(await file.text());
+            setListOpen(true);
+          }}
+        />
       </div>
 
       <div className="scroll-thin min-w-0 flex-1 overflow-auto p-2">
@@ -424,6 +472,49 @@ export function BulkPanel() {
           </table>
         )}
       </div>
+
+      {listOpen ? (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setListOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-lg border border-line bg-ink-2 p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1.5 flex items-center gap-2">
+              <div className="text-[12px] font-bold">导入人物清单</div>
+              <Button size="sm" variant="ghost" onClick={() => listFileRef.current?.click()}>
+                选择文件
+              </Button>
+            </div>
+            <p className="mb-1.5 text-[10px] leading-relaxed text-mute">
+              按名字匹配画布上已有的人物，只更新清单里写到的字段：
+              <code>name,line,voicemode,bubble,volume,height</code>。不会新增或删除人物。
+            </p>
+            <textarea
+              value={listText}
+              onChange={(e) => setListText(e.target.value)}
+              placeholder={"name,line,bubble,volume,height\n老K,这波真的不亏,comic,1,360"}
+              aria-label="人物清单内容"
+              className="scroll-thin h-36 w-full rounded border border-line bg-ink px-2 py-1.5 font-mono text-[10.5px] leading-relaxed outline-none focus:border-neon/50"
+            />
+            <div className="mt-2 flex justify-end gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => setListOpen(false)}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                icon="check"
+                onClick={() => importCharacterList(listText)}
+              >
+                按清单更新
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
