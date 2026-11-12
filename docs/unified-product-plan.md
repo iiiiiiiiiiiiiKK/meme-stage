@@ -16,8 +16,21 @@
 | 2 单张工坊 | ✅ | 本地检测/抠图/程序化双层描边/手动 Mask 修复/版本保存，均在 `/studio/sticker` |
 | 3 批量工坊 | ✅ | IndexedDB 持久化队列、刷新恢复、单张超时保护、ZIP + manifest、批量入画布，在 `/studio/batch` |
 | 4 素材库合并 | ✅ | `/assets` 统一入口：本机（IndexedDB）与云端（R2）同一屏、作用域标记、类型/名称筛选、多选加入画布、云端删除 |
-| 5 AI Provider | ✅ | 服务端 Provider 适配层 + `/api/ai/capabilities\|generate\|edit`；文字生成、风格化、未配置态、成本与失败直说；生成字节可存 R2 或转存图床 |
+| 5 AI Provider | ✅ | **自带密钥（BYOK）**：密钥只存在使用者浏览器，请求由浏览器直连图像服务，服务端零密钥、`/api/ai/*` 已整套删除；文字生成、风格化、成本与失败直说 |
 | 6 多主体/通用物体 | ⏳ 部分 | 多脸选择已可用；动物/商品/卡通没有专属模型，明确以本地 Alpha + 手修兜底 |
+
+**为什么改成本地密钥（2026-11-13 第三轮）**：原设计把密钥放在 Cloudflare secret 里由服务端代调，结果是任何打开 `https://meme-stage.pages.dev/` 的人都能消耗站主的额度——这是一个真实的产品级缺陷，不是配置问题。现已整体改为 BYOK：
+
+| 项 | 现状 |
+| --- | --- |
+| 服务端密钥 | 已删除（`IMAGE_API_KEY` / `IMGBB_API_KEY` secret 均已 `wrangler pages secret delete`） |
+| 服务端 AI 接口 | `/api/ai/capabilities|generate|edit` 与 `_lib/{imageProvider,generatedAsset,imageHost}.ts` 全部删除 |
+| 密钥存放 | 使用者浏览器的 `localStorage["ms.ai.key"]`，可一键删除 |
+| 请求路径 | 浏览器 → `agent3.shyfai.cn`（`Authorization` 头），不经过本站 Worker |
+| 发布链接 | 生成字节经 `/api/assets` 落成常规素材，发布页仍是 `/api/files/:id` |
+| CSP | 仅额外放行 `agent3.shyfai.cn` 与 `*.fycsai.com` |
+
+实测（真实密钥，浏览器内）：`GET /v1/models` 返回 17 个模型；`POST /v1/images/generations` 18 秒返回图片字节；面板可存为 `ai-generate` 本机素材；`/api/ai/capabilities` 已不再存在（回落到 SPA 页面），`/api/ai/generate` 返回 405。
 
 ### 审计修复记录（2026-11-13 第二轮）
 
@@ -33,7 +46,7 @@
 | 能力探测把限流/断网显示成「未启用」 | 服务端区分 `configured` / `verified` / `retryable`；面板显示「暂时不可用 + 重新检查」，并加 20s 内存缓存避免两个面板重复探测上游 |
 | 生成图尺寸 / 字节数与实际不符 | 从图片头读取真实像素尺寸；图床会重编码，用 `HEAD` 读托管后的 `content-length` 记录真实字节（实测 746546 → 336354 的偏差已消除） |
 
-**可选图床**：`IMAGE_HOST=imgbb` + `IMGBB_API_KEY`（secret）时，生成结果转存图床，`/api/files/:id` 302 跳转，R2 只保留用户自己上传的素材；默认仍是 R2。
+> 说明：图床（imgbb）方案已随 BYOK 改造一并移除。生成结果不再由服务端托管，也就不需要服务端的图床密钥。
 
 ### 阶段 5 的实际核验记录（2026-11-13）
 
@@ -49,9 +62,9 @@
 
 - `src/features/sticker/` — 引擎、处理器、仓储、桥接、两个工坊、AI 面板
 - `src/features/sticker/engine/` — 从 Meme Studio 原样迁入的 `ai/mask/outline/cutout/image`
-- `src/features/sticker/{ai,AiStylePanel,AiGeneratePanel}.tsx` — 浏览器侧 AI 客户端与两个面板
-- `functions/_lib/{imageProvider,generatedAsset}.ts` — 服务端 Provider 适配与生成结果入库
-- `functions/api/ai/{capabilities,generate,edit}.ts` — 三个只走服务端的 AI 接口
+- `src/features/sticker/{AiStylePanel,AiGeneratePanel}.tsx` — 两个 AI 面板
+
+- `src/features/sticker/{byok,useAiKey,AiKeyPanel,persist}.ts` — 浏览器侧密钥、直连调用与入库
 - `src/pages/{Studio,UnifiedLibrary}.tsx` — `/studio/*` 与 `/assets` 路由
 - `public/models/` — 本地模型静态资源（selfie / blazeface / facemesh / rvm）
 

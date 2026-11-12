@@ -1,14 +1,23 @@
 /// <reference types="@cloudflare/workers-types" />
 import type { FunctionContext } from "./_lib/http";
 
+/**
+ * Image generation runs in the visitor's browser with their own key, so the page
+ * has to be allowed to reach the gateway and the CDN that serves the result. Those
+ * are the only cross-origin endpoints the app talks to; everything else stays
+ * same-origin.
+ */
+const AI_GATEWAY = "https://agent3.shyfai.cn";
+const AI_CDN = "https://*.fycsai.com";
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${AI_CDN}`,
   "media-src 'self' blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  `connect-src 'self' ${AI_GATEWAY} ${AI_CDN}`,
   "worker-src 'self' blob:",
   "frame-ancestors 'self'",
   "base-uri 'self'",

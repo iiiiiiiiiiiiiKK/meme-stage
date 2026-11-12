@@ -24,7 +24,7 @@ import {
   type ProcessProgress,
 } from "./processor";
 import { createCanvas, ctx2d, decodeToCanvas, downloadBlob, formatBytes, makeThumbnail } from "./engine/image";
-import type { AssetRecord } from "../../lib/types";
+import { measureBlob } from "./persist";
 import {
   clearStickerData,
   deleteVariant,
@@ -395,28 +395,25 @@ export function StickerStudio() {
   /* --------------------------------------------------------------- to Stage */
 
   /**
-   * Persist an AI-generated cloud asset as a local variant so it behaves like
-   * every other sticker (downloadable, importable, kept as its own version).
+   * Save a generated blob as its own version.
    *
-   * The original local cutout stays untouched. The parent sticker supplies the
-   * source/mask ids, so this still works when the user restored a session without
-   * re-opening the original photo.
+   * The image was produced in this browser with the user's own key, so it arrives as
+   * bytes rather than a server asset. The parent sticker supplies source/mask ids, so
+   * this still works after restoring a session that had no original photo open.
    */
-  const adoptAiAsset = useCallback(
-    async (parent: StickerVariant, asset: AssetRecord) => {
+  const adoptAiBlob = useCallback(
+    async (parent: StickerVariant, blob: Blob, name: string) => {
       try {
-        const response = await fetch(asset.url);
-        if (!response.ok) throw new Error("无法读取生成的图片");
-        const blob = await response.blob();
+        const measured = await measureBlob(blob);
         const thumb = await makeThumbnail(blob, 320);
         await putVariant({
           sourceId: parent.sourceId,
           maskId: parent.maskId,
           parentVariantId: parent.id,
           kind: "ai-style",
-          name: `${parent.name.slice(0, 24)} · AI`.slice(0, 60),
-          width: asset.width ?? 1024,
-          height: asset.height ?? 1024,
+          name: name.slice(0, 60),
+          width: measured.width,
+          height: measured.height,
           mime: blob.type === "image/webp" ? "image/webp" : "image/png",
           outline: parent.outline,
           mode: parent.mode,
@@ -851,10 +848,9 @@ export function StickerStudio() {
         {variants.length > 0 ? (
           <Field label="AI 风格版">
             <AiStylePanel
-              variantId={variants[0].id}
               variantName={variants[0].name}
               sourceBlob={latestBlob}
-              onResult={(asset) => void adoptAiAsset(variants[0], asset)}
+              onResult={(blob, name) => void adoptAiBlob(variants[0], blob, name)}
             />
           </Field>
         ) : null}

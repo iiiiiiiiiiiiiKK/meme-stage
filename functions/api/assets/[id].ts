@@ -20,9 +20,6 @@ export async function onRequestDelete(context: FunctionContext): Promise<Respons
     // missing object (recoverable), whereas the reverse leaks an unreferenced file
     // that no listing can ever find again.
     await context.env.DB.prepare("DELETE FROM assets WHERE id = ? AND owner_hash = ?").bind(id, owner).run();
-    // External hosts (imgbb) have no delete API for a plain key, so the row is the
-    // only thing we can remove; skip the bucket call for those.
-    if (row.object_key.startsWith("ext::")) return json({ ok: true, external: true });
     try {
       await context.env.BUCKET.delete(row.object_key);
     } catch (error) {
