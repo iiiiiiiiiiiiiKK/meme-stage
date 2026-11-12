@@ -32,6 +32,8 @@ function makeHooks(cuesByActor: Record<string, VoiceClip[]>) {
       await new Promise((r) => setTimeout(r, 20));
     },
     stopAudio: () => log.push("stop"),
+    pauseAudio: () => log.push("pause-audio"),
+    resumeAudio: () => log.push("resume-audio"),
     showBubble: (actorId: string, text: string) => log.push(`bubble:${actorId}:${text}`),
     hideBubble: () => undefined,
     animate: (actorId: string, anim: string) => log.push(`anim:${actorId}:${anim}`),
@@ -122,6 +124,68 @@ describe("PerformanceRunner", () => {
     await run;
     expect(runner.currentState).toBe("finished");
     expect(hooks.log.filter((l) => l.startsWith("play:")).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("pause suspends audio instead of restarting the clip", async () => {
+    const hooks = makeHooks({ a: [clip("a1", 5, "长句")] });
+    // a real clip blocks until it ends; the shared helper resolves after 20ms,
+    // so this case needs its own slow playback
+    hooks.playVoice = async (actorId: string, played: VoiceClip) => {
+      hooks.log.push(`play:${actorId}:${played.id}`);
+      await new Promise((r) => setTimeout(r, 400));
+    };
+    const runner = new PerformanceRunner(hooks);
+    const run = runner.play(perf([{ id: "c1", actorId: "a", waitAfter: 0 }]));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(runner.currentState).toBe("playing");
+    runner.pause();
+    // suspended in place: the engine is told to pause, never to stop
+    expect(runner.currentState).toBe("paused");
+    expect(hooks.log).toContain("pause-audio");
+    await new Promise((r) => setTimeout(r, 200));
+    runner.resume();
+    await run;
+    expect(hooks.log).toContain("resume-audio");
+    // the cue ran once: pausing must not restart it
+    expect(hooks.log.filter((l) => l === "play:a:a1")).toHaveLength(1);
+  });
+
+  it("skips a cue that was deleted while the script is running", async () => {
+    // slow clip so the deletion lands while cue 1 is still on stage
+    const hooks = makeHooks({ a: [clip("a1", 2, "一")], b: [clip("b1", 0.2, "二")] });
+    const live = perf([
+      { id: "c1", actorId: "a", waitAfter: 0 },
+      { id: "c2", actorId: "b", waitAfter: 0 },
+    ]);
+    const runner = new PerformanceRunner({ ...hooks, getPerformance: () => live });
+    const run = runner.play(live);
+    await new Promise((r) => setTimeout(r, 5));
+    // the editor removes the second line while the first still plays
+    live.cues = live.cues.filter((cue) => cue.id !== "c2");
+    runner.stop();
+    await run;
+    expect(hooks.log.filter((l) => l.startsWith("play:"))).toEqual(["play:a:a1"]);
+  });
+
+  it("keeps running the surviving cues after a deletion", async () => {
+    const hooks = makeHooks({
+      a: [clip("a1", 2, "一")],
+      b: [clip("b1", 0.2, "二")],
+      c: [clip("c1", 0.2, "三")],
+    });
+    const live = perf([
+      { id: "c1", actorId: "a", waitAfter: 0 },
+      { id: "c2", actorId: "b", waitAfter: 0 },
+      { id: "c3", actorId: "c", waitAfter: 0 },
+    ]);
+    const runner = new PerformanceRunner({ ...hooks, getPerformance: () => live });
+    const run = runner.play(live);
+    await new Promise((r) => setTimeout(r, 5));
+    // remove the middle line only
+    live.cues = live.cues.filter((cue) => cue.id !== "c2");
+    await run;
+    expect(hooks.log.filter((l) => l.startsWith("play:"))).toEqual(["play:a:a1", "play:c:c1"]);
+    expect(runner.currentState).toBe("finished");
   });
 
   it("rejects an empty performance with a readable error", async () => {

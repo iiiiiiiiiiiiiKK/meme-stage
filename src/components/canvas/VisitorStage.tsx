@@ -305,6 +305,9 @@ export function VisitorStage({
         await audioEngine.play(clip, projectRef.current.settings.audioMode);
       },
       stopAudio: () => audioEngine.stop(),
+      pauseAudio: () => audioEngine.pauseAll(),
+      resumeAudio: () => audioEngine.resumeAll(),
+      getPerformance: () => projectRef.current.performances?.[0] ?? null,
       showBubble: (actorId, text, holdSeconds) => {
         const el = projectRef.current.elements.find((item) => item.id === actorId);
         if (!el) return;

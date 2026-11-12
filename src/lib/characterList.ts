@@ -129,32 +129,46 @@ export function parseCharacterList(text: string): CharacterListResult {
   return { rows, errors };
 }
 
-/** apply parsed rows in place on a project draft; returns the unmatched names */
+/**
+ * Apply parsed rows in place on a project draft; returns the unmatched names.
+ *
+ * Characters are matched by name, case-insensitively. When several characters
+ * share a name the row is applied to **all** of them: imported duplicates are a
+ * normal side effect of "add the same photo twice", and silently updating only
+ * the last one looks like the import was ignored.
+ */
 export function applyCharacterRows(elements: CanvasElement[], rows: CharacterRow[]): string[] {
   const missed: string[] = [];
-  const byName = new Map<string, CanvasElement>();
+  const byName = new Map<string, CanvasElement[]>();
   for (const el of elements) {
-    if (el.type === "character") byName.set((el.character?.name ?? "").toLowerCase(), el);
+    if (el.type !== "character" || !el.character) continue;
+    const key = (el.character.name ?? "").toLowerCase();
+    const list = byName.get(key);
+    if (list) list.push(el);
+    else byName.set(key, [el]);
   }
   for (const row of rows) {
-    const el = byName.get(row.name.toLowerCase());
-    if (!el || !el.character) {
+    const targets = byName.get(row.name.toLowerCase());
+    if (!targets || targets.length === 0) {
       missed.push(row.name);
       continue;
     }
-    if (row.line) el.character.line = row.line;
-    if (row.voiceMode) el.character.voiceMode = row.voiceMode;
-    if (row.bubble) el.character.bubble = { ...el.character.bubble, preset: row.bubble };
-    if (row.volume !== undefined) {
-      for (const clip of el.character.voices) clip.volume = row.volume;
-    }
-    if (row.voiceLine) {
-      for (const clip of el.character.voices) clip.line = row.voiceLine;
-    }
-    if (row.height) {
-      const ratio = el.width / Math.max(1, el.height);
-      el.height = row.height;
-      el.width = Math.round(row.height * ratio);
+    for (const el of targets) {
+      if (!el.character) continue;
+      if (row.line) el.character.line = row.line;
+      if (row.voiceMode) el.character.voiceMode = row.voiceMode;
+      if (row.bubble) el.character.bubble = { ...el.character.bubble, preset: row.bubble };
+      if (row.volume !== undefined) {
+        for (const clip of el.character.voices) clip.volume = row.volume;
+      }
+      if (row.voiceLine) {
+        for (const clip of el.character.voices) clip.line = row.voiceLine;
+      }
+      if (row.height) {
+        const ratio = el.width / Math.max(1, el.height);
+        el.height = row.height;
+        el.width = Math.round(row.height * ratio);
+      }
     }
   }
   return missed;

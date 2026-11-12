@@ -27,7 +27,9 @@ export function ScriptPanel({ onTest }: { onTest: () => void }) {
   );
   const performance = project.performances?.[0] ?? null;
   const assets = useAssets((s) => s.items);
-  const animAssets = assets.filter((a) => a.kind === "image");
+  // MP4 is stored server-side with kind "video"; cue effects must be able to use
+  // it, so both kinds are offered and the MIME decides the player type.
+  const animAssets = assets.filter((a) => a.kind === "image" || a.kind === "video");
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -416,9 +418,10 @@ function CueEffects({
 
   const add = (asset: { url: string; mime: string; name: string }) => {
     if (effects.length >= 6) return;
-    const kind: CueEffect["kind"] = asset.mime.includes("mp4")
+    const mime = asset.mime.toLowerCase();
+    const kind: CueEffect["kind"] = mime.startsWith("video/")
       ? "mp4"
-      : asset.mime.includes("webp")
+      : mime.includes("webp")
         ? "webp"
         : "gif";
     onChange([
@@ -524,13 +527,23 @@ function CueEffects({
                   className="flex items-center gap-1 rounded border border-line px-1 py-0.5 text-[9px] text-mute hover:border-neon/50 hover:text-paper"
                   title={asset.name}
                 >
-                  <img src={asset.url} alt="" className="h-4 w-4 rounded object-cover" />
+                  {asset.mime.startsWith("video/") ? (
+                    <video
+                      src={asset.url}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="h-4 w-4 rounded object-cover"
+                    />
+                  ) : (
+                    <img src={asset.url} alt="" className="h-4 w-4 rounded object-cover" />
+                  )}
                   {asset.name.slice(0, 10)}
                 </button>
               ))}
             </div>
           ) : (
-            <p className="text-[9px] text-mute">素材库里还没有图片类素材。</p>
+            <p className="text-[9px] text-mute">素材库里还没有动图或视频素材。</p>
           )}
         </div>
       ) : null}

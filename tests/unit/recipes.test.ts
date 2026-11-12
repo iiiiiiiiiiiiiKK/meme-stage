@@ -36,12 +36,28 @@ describe("interaction recipes", () => {
     }
   });
 
-  it("inOrder chains events with valid next ids", () => {
+  it("inOrder returns every chained node so the chain is actually persisted", () => {
     const els = cast(4);
     const events = buildRecipes("inOrder", els);
-    // returns the head of the chain only
-    expect(events).toHaveLength(1);
-    expect(events[0].nextEventId).toBeTruthy();
+    expect(events).toHaveLength(4);
+    // every nextEventId must point at an event that is part of the result
+    const ids = new Set(events.map((e) => e.id));
+    for (const ev of events) {
+      if (ev.nextEventId) expect(ids.has(ev.nextEventId)).toBe(true);
+    }
+    expect(events.filter((e) => e.nextEventId)).toHaveLength(3);
+  });
+
+  it("randomCall picks a partner with the supplied rng", () => {
+    const els = cast(3);
+    const first = buildRecipes("randomCall", els, () => 0);
+    const last = buildRecipes("randomCall", els, () => 0.999);
+    // element 0's partner is others[0] with rng 0, others[last] with rng ~1
+    const partnerOf = (events: typeof first, actorId: string) =>
+      events.find((e) => e.triggerId === actorId)!.steps.find((s) => s.type === "playAudio" && s.parallel === false)
+        ?.targetId;
+    expect(partnerOf(first, els[0].id)).toBe(els[1].id);
+    expect(partnerOf(last, els[0].id)).toBe(els[2].id);
   });
 
   it("threeRound needs two actors and links A → B → A2", () => {
@@ -70,7 +86,6 @@ describe("interaction recipes", () => {
       expect(ev.steps.some((s) => s.type === "animate")).toBe(true);
     }
   });
-
   it("ignores characters without voices and empty projects", () => {
     const silent = createCharacter({ name: "哑巴", imageUrl: "/api/files/x.webp", width: 100, height: 100 });
     expect(buildRecipes("everyoneSpeaks", [silent])).toEqual([]);

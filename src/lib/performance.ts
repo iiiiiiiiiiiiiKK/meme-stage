@@ -12,10 +12,20 @@ export type PerformanceState = "idle" | "playing" | "paused" | "finished";
 
 export interface PerformanceHooks {
   getProject(): { elements: { id: string; character?: { voices: VoiceClip[]; name: string } }[] };
+  /**
+   * Live script lookup. The editor can add / delete / reorder cues while a
+   * performance runs, so each step resolves its cue by id against the current
+   * document instead of a stale array index.
+   */
+  getPerformance?(): Performance | null;
   /** resolves the clip for a cue (explicit id or rotation) */
   resolveClip(actorId: string, clipId?: string): VoiceClip | null;
   playVoice(actorId: string, clip: VoiceClip): Promise<void>;
   stopAudio(): void;
+  /** suspend the current clip in place (keeps its position) */
+  pauseAudio(): void;
+  /** continue a suspended clip from where it stopped */
+  resumeAudio(): void;
   showBubble(actorId: string, text: string, holdSeconds: number): void;
   hideBubble(actorId: string): void;
   animate(actorId: string, animation: AnimationName): void;
@@ -38,6 +48,8 @@ export class PerformanceRunner {
   private resumeWaiters: (() => void)[] = [];
   private state: PerformanceState = "idle";
   private index = 0;
+  private currentLipFlap: string | null = null;
+  private lipFlapActor: string | null = null;
 
   constructor(hooks: PerformanceHooks) {
     this.hooks = hooks;
@@ -60,6 +72,8 @@ export class PerformanceRunner {
     this.token += 1;
     this.paused = false;
     this.index = 0;
+    this.currentLipFlap = null;
+    this.lipFlapActor = null;
     this.releaseWaiters();
     this.hooks.stopAudio();
     this.hooks.clearEffects();
@@ -72,8 +86,10 @@ export class PerformanceRunner {
     if (this.state !== "playing") return;
     this.paused = true;
     this.setState("paused");
-    // stopping audio keeps the cue from advancing while paused
-    this.hooks.stopAudio();
+    // suspend instead of stop: the clip keeps its position, so resume() continues
+    // the same sentence rather than replaying it from the start
+    this.hooks.pauseAudio();
+    this.lipFlapActor = this.currentLipFlap;
     this.hooks.lipFlap(null);
   }
 
@@ -81,6 +97,9 @@ export class PerformanceRunner {
     if (this.state !== "paused") return;
     this.paused = false;
     this.setState("playing");
+    this.hooks.resumeAudio();
+    if (this.lipFlapActor) this.hooks.lipFlap(this.lipFlapActor);
+    this.lipFlapActor = null;
     this.releaseWaiters();
   }
 
@@ -91,13 +110,32 @@ export class PerformanceRunner {
   }
 
   /** blocks while paused; also aborts when the run token changes */
-  private async gate(myRun: number): Promise<boolean> {
+  private async waitWhilePaused(myRun: number): Promise<boolean> {
     while (this.paused) {
       if (myRun !== this.token) return false;
       await new Promise<void>((resolve) => {
         this.resumeWaiters.push(resolve);
         setTimeout(resolve, 250);
       });
+    }
+    return myRun === this.token;
+  }
+
+  /**
+   * Sleep that freezes while paused and aborts on stop. Plain setTimeout would
+   * keep counting down during a pause and cut the cue short on resume.
+   */
+  private async sleep(ms: number, myRun: number): Promise<boolean> {
+    let remaining = ms;
+    while (remaining > 0) {
+      if (myRun !== this.token) return false;
+      if (this.paused) {
+        if (!(await this.waitWhilePaused(myRun))) return false;
+        continue;
+      }
+      const slice = Math.min(remaining, 60);
+      await new Promise<void>((resolve) => setTimeout(resolve, slice));
+      if (!this.paused && myRun === this.token) remaining -= slice;
     }
     return myRun === this.token;
   }
@@ -109,22 +147,30 @@ export class PerformanceRunner {
       return;
     }
     const myRun = ++this.token;
+    // Anchor progress on cue ids, not array indexes: adding, deleting or
+    // reordering lines while it plays then never skips or repeats a cue.
+    const queue = performance.cues.slice(fromIndex).map((cue) => cue.id);
     this.index = fromIndex;
     this.paused = false;
     this.setState("playing");
 
+    const live = () => this.hooks.getPerformance?.() ?? performance;
+    let round = 0;
     do {
-      for (let i = fromIndex; i < performance.cues.length; i++) {
+      const ids = round === 0 ? queue : live().cues.map((cue) => cue.id);
+      for (const cueId of ids) {
         if (myRun !== this.token) return;
-        if (!(await this.gate(myRun))) return;
-        this.index = i;
-        const cue = performance.cues[i];
-        this.hooks.onCue?.(i, cue);
-        await this.runCue(cue, myRun);
+        if (!(await this.waitWhilePaused(myRun))) return;
+        const cues = live().cues;
+        const position = cues.findIndex((cue) => cue.id === cueId);
+        if (position < 0) continue; // the line was deleted mid-performance
+        this.index = position;
+        this.hooks.onCue?.(position, cues[position]);
+        await this.runCue(cues[position], myRun);
         if (myRun !== this.token) return;
       }
-      fromIndex = 0;
-    } while (performance.loop && myRun === this.token);
+      round += 1;
+    } while ((this.hooks.getPerformance?.() ?? performance).loop && myRun === this.token);
 
     if (myRun === this.token) {
       this.hooks.spotlight(null);
@@ -135,8 +181,7 @@ export class PerformanceRunner {
 
   private async runCue(cue: PerformanceCue, myRun: number): Promise<void> {
     if (cue.waitBefore && cue.waitBefore > 0) {
-      await this.hooks.wait(cue.waitBefore);
-      if (myRun !== this.token) return;
+      if (!(await this.sleep(cue.waitBefore, myRun))) return;
     }
 
     const project = this.hooks.getProject();
@@ -151,48 +196,51 @@ export class PerformanceRunner {
     const clip = this.hooks.resolveClip(cue.actorId, cue.clipId);
     const text = (cue.text ?? clip?.line ?? "").trim();
 
-    if (cue.lipFlap) this.hooks.lipFlap(cue.actorId);
+    const cleanup = () => {
+      effects.forEach((item) => item.cancel());
+      this.currentLipFlap = null;
+      this.lipFlapActor = null;
+      this.hooks.lipFlap(null);
+    };
 
-    let audioMs = 0;
+    if (cue.lipFlap) {
+      this.currentLipFlap = cue.actorId;
+      this.hooks.lipFlap(cue.actorId);
+    }
+
     if (clip) {
-      audioMs = Math.max(0, ((clip.duration || 0) / (clip.rate ?? 1)) * 1000);
+      const audioMs = Math.max(0, ((clip.duration || 0) / (clip.rate ?? 1)) * 1000);
       if (text && cue.showBubble !== false) {
         this.hooks.showBubble(cue.actorId, text, Math.max(1, audioMs / 1000 + 0.4));
       }
       const pending = this.hooks.playVoice(cue.actorId, clip);
-      // paused mid-cue: playback was stopped by pause(); bail out cleanly
-      const finished = await Promise.race([
-        pending.then(() => true),
-        this.hooks.wait(cue.holdMs && cue.holdMs > 0 ? cue.holdMs : Math.max(audioMs, 400)).then(() => true),
-        this.watchToken(myRun).then(() => false),
+      const holdMs = cue.holdMs && cue.holdMs > 0 ? cue.holdMs : Math.max(audioMs, 400);
+      // both branches are pause-aware: while paused the clip is suspended in
+      // place and the hold timer stops counting, so resume continues the line
+      const winner = await Promise.race([
+        pending.then(() => "audio" as const),
+        this.sleep(holdMs, myRun).then((ok) => (ok ? ("hold" as const) : ("abort" as const))),
       ]);
-      if (!finished || myRun !== this.token) {
-        effects.forEach((item) => item.cancel());
-        this.hooks.lipFlap(null);
+      if (winner === "abort" || myRun !== this.token) {
+        cleanup();
         return;
       }
     } else if (text) {
       const holdMs = cue.holdMs && cue.holdMs > 0 ? cue.holdMs : 1800;
       if (cue.showBubble !== false) this.hooks.showBubble(cue.actorId, text, Math.max(1, holdMs / 1000));
-      if (cue.animation) this.hooks.animate(cue.actorId, cue.animation);
-      await this.hooks.wait(holdMs);
+      if (!(await this.sleep(holdMs, myRun))) {
+        cleanup();
+        return;
+      }
     } else {
       this.hooks.onError?.(`「${actor.character?.name ?? "该人物"}」还没有语音或台词`);
-      await this.hooks.wait(120);
+      if (!(await this.sleep(120, myRun))) {
+        cleanup();
+        return;
+      }
     }
 
-    this.hooks.lipFlap(null);
-    if (cue.waitAfter && cue.waitAfter > 0) await this.hooks.wait(cue.waitAfter);
-    effects.forEach((item) => item.cancel());
-  }
-
-  private watchToken(myRun: number): Promise<void> {
-    return new Promise<void>((resolve) => {
-      const tick = () => {
-        if (myRun !== this.token || this.paused) resolve();
-        else setTimeout(tick, 40);
-      };
-      setTimeout(tick, 40);
-    });
+    cleanup();
+    if (cue.waitAfter && cue.waitAfter > 0) await this.sleep(cue.waitAfter, myRun);
   }
 }

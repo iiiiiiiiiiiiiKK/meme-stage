@@ -73,4 +73,34 @@ describe("templates", () => {
       duet.settings.bubblePlacement.maxWidth,
     );
   });
+
+  it("re-flows the cast onto the new stage instead of keeping old coordinates", () => {
+    const src = project();
+    // landscape coordinates that would sit outside a portrait stage
+    src.elements[0].x = 1400;
+    src.elements[0].y = 600;
+    src.elements[1].x = 1500;
+    src.elements[1].y = 700;
+    const portrait = BUILTIN_TEMPLATES.find((t) => t.id === "builtin-chat") as Template;
+    const next = applyTemplate(src, portrait);
+    for (const el of next.elements) {
+      expect(el.x).toBeGreaterThanOrEqual(0);
+      expect(el.y).toBeGreaterThanOrEqual(0);
+      expect(el.x + el.width).toBeLessThanOrEqual(next.width + 1);
+      expect(el.y + el.height).toBeLessThanOrEqual(next.height + 1);
+    }
+    // characters must not be stacked on top of each other
+    const [a, b] = next.elements;
+    const separated = a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+    expect(separated).toBe(true);
+  });
+
+  it("honours the template's layout mode", () => {
+    const src = project();
+    const portrait = BUILTIN_TEMPLATES.find((t) => t.id === "builtin-chat") as Template;
+    const next = applyTemplate(src, portrait);
+    // 9:16 with two 420-high characters cannot stay side by side in one row
+    const [a, b] = next.elements;
+    expect(Math.abs(a.y - b.y)).toBeGreaterThan(1);
+  });
 });

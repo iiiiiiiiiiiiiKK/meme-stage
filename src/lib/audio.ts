@@ -108,6 +108,41 @@ export class AudioEngine {
     this.onPlayingChange?.(false);
   }
 
+  /**
+   * Suspend playback in place. Unlike stop(), the element keeps its position and
+   * the pending `play()` promise stays unresolved, so resume() continues from the
+   * same frame instead of restarting the clip.
+   */
+  pauseAll(): void {
+    for (const handle of this.active) {
+      try {
+        handle.audio.pause();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      window.speechSynthesis?.pause();
+    } catch {
+      // ignore
+    }
+  }
+
+  resumeAll(): void {
+    for (const handle of this.active) {
+      try {
+        void handle.audio.play();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      window.speechSynthesis?.resume();
+    } catch {
+      // ignore
+    }
+  }
+
   stopFor(url: string): void {
     for (const handle of Array.from(this.active)) {
       if (handle.url === url) handle.stop();

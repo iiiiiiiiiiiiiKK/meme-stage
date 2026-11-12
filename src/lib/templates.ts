@@ -8,6 +8,16 @@
 import type { BubbleStyle, ProjectData } from "./types";
 import { makeBubble } from "./defaults";
 import { uid } from "./ids";
+import { layoutElements, type LayoutMode } from "./layout";
+
+const LAYOUT_MODES: readonly LayoutMode[] = [
+  "scatter",
+  "grid",
+  "cluster",
+  "random",
+  "nooverlap",
+  "custom",
+];
 
 export interface TemplateSettings {
   width: number;
@@ -169,8 +179,9 @@ export function captureTemplate(project: ProjectData, name: string): Template {
 
 /**
  * Apply a template to a project. Existing elements keep their identity; when
- * `resizeCast` is true every character is scaled to the template height so the
- * stage looks intentional instead of half-migrated.
+ * `resizeCast` is true every character is scaled to the template height *and*
+ * re-laid out with the template's own mode, so a portrait stage does not keep
+ * landscape coordinates (which used to leave the cast stacked in a corner).
  */
 export function applyTemplate(project: ProjectData, template: Template, resizeCast = true): ProjectData {
   const s = template.settings;
@@ -189,7 +200,7 @@ export function applyTemplate(project: ProjectData, template: Template, resizeCa
   };
   if (!resizeCast) return next;
 
-  next.elements = project.elements.map((el) => {
+  const resized = project.elements.map((el) => {
     if (el.type !== "character" || !el.character) return el;
     const ratio = el.width / Math.max(1, el.height);
     const height = s.characterHeight;
@@ -202,6 +213,35 @@ export function applyTemplate(project: ProjectData, template: Template, resizeCa
         bubble: { ...s.bubble },
         bubblePlacement: { ...s.bubblePlacement },
       },
+    };
+  });
+
+  // Re-flow the cast on the new stage, keeping z-order (the layout helper is
+  // order-stable, so the n-th character keeps the n-th slot).
+  const cast = resized.filter((el) => el.type === "character");
+  const mode = (LAYOUT_MODES as readonly string[]).includes(s.layoutMode)
+    ? (s.layoutMode as LayoutMode)
+    : "grid";
+  const rects = layoutElements(
+    cast.map((el) => ({ width: el.width, height: el.height })),
+    { width: s.width, height: s.height },
+    { mode, baseHeight: s.characterHeight, gap: 24, seed: 20240607 },
+  );
+  const placed = new Map<string, { x: number; y: number; width: number; height: number }>();
+  cast.forEach((el, index) => {
+    const rect = rects[index];
+    if (rect) placed.set(el.id, rect);
+  });
+
+  next.elements = resized.map((el) => {
+    const rect = placed.get(el.id);
+    if (!rect) return el;
+    return {
+      ...el,
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
     };
   });
   return next;

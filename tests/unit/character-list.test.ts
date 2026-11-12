@@ -75,6 +75,17 @@ describe("character list import", () => {
     expect(missed).toEqual(["不存在"]);
   });
 
+  it("updates every character that shares a name", () => {
+    const elements = cast();
+    // a second character reusing the same picture is a normal import outcome
+    const dupe = createCharacter({ name: "老K", imageUrl: "/api/files/k2.webp", width: 200, height: 300 });
+    elements.push(dupe);
+    const missed = applyCharacterRows(elements, [{ name: "老K", line: "共享台词" }]);
+    expect(missed).toEqual([]);
+    expect(elements[0].character!.line).toBe("共享台词");
+    expect(dupe.character!.line).toBe("共享台词");
+  });
+
   it("applies a shared voice line to every clip", () => {
     const elements = cast();
     applyCharacterRows(elements, [{ name: "猫猫头", voiceLine: "统一台词" }]);

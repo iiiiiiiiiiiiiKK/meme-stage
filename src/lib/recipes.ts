@@ -29,7 +29,15 @@ function event(name: string, triggerId: string, steps: Step[], nextEventId: stri
   return { id: uid("ev"), name, triggerId, steps, nextEventId, enabled: true };
 }
 
-export function buildRecipes(recipe: RecipeId, elements: CanvasElement[]): EventDef[] {
+export function buildRecipes(
+  recipe: RecipeId,
+  elements: CanvasElement[],
+  /**
+   * Injectable RNG so recipes that pick a random partner stay testable.
+   * Returns a float in [0, 1), like Math.random.
+   */
+  rng: () => number = Math.random,
+): EventDef[] {
   const cast = charactersOf(elements);
   if (cast.length === 0) return [];
 
@@ -61,7 +69,9 @@ export function buildRecipes(recipe: RecipeId, elements: CanvasElement[]): Event
       events.forEach((ev, index) => {
         if (index < events.length - 1) ev.nextEventId = events[index + 1].id;
       });
-      return [events[0]];
+      // every node must be persisted, otherwise the chain jumps to an id that
+      // does not exist in the project and playback stops after the first line
+      return events;
     }
 
     // 随机点名：点任意人物 → 自己说话 → 随机另一个人接一句
@@ -70,9 +80,10 @@ export function buildRecipes(recipe: RecipeId, elements: CanvasElement[]): Event
         const others = cast.filter((other) => other.id !== el.id);
         const steps: Step[] = [{ ...makeStep("playAudio", el.id) }];
         if (others.length > 0) {
+          const pick = others[Math.min(others.length - 1, Math.floor(rng() * others.length))];
           steps.push({ ...makeStep("wait"), ms: 120 });
-          steps.push({ ...makeStep("playAudio", others[0].id), parallel: false });
-          steps.push({ ...makeStep("animate", others[0].id), animation: "bounce" });
+          steps.push({ ...makeStep("playAudio", pick.id), parallel: false });
+          steps.push({ ...makeStep("animate", pick.id), animation: "bounce" });
         }
         return event(`${el.character?.name ?? "人物"} 点名`, el.id, steps);
       });
