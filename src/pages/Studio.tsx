@@ -35,8 +35,8 @@ export function StudioPage() {
         ))}
         <div className="ml-auto flex items-center gap-1.5 text-[10px] text-mute">
           <span className="rounded border border-line px-1.5 py-0.5">本机处理</span>
-          <Link to="/library" className="hover:text-paper">
-            我的作品
+          <Link to="/assets" className="hover:text-paper">
+            素材库
           </Link>
         </div>
       </header>

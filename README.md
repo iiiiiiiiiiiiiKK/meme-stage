@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-150%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-170%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -82,6 +82,17 @@
 - **参数快照**：提交时把裁切模式、描边、输出尺寸写进这一批任务，之后改面板不影响已提交项。
 - **导出**：成功项打包成 ZIP（含 `manifest.json`，失败项另附 `failed.json`），同名文件自动加序号，保留真实透明通道。
 - **加入画布**：多张结果一次导入 Stage，每张都是独立图层，不会合成一张带背景的图片。
+
+### AI 生图与风格化（可选，服务端持钥）
+
+- **默认关闭、显式开启**：没有配置 `IMAGE_API_KEY` 时接口返回 `configured:false`，面板显示「未启用」并给出原因，功能不假装可用。
+- **密钥只在服务端**：浏览器只调用本项目的 `/api/ai/*`，密钥存在 Cloudflare Pages secret 里，不进入前端包、不写 LocalStorage、不写仓库。
+- **真实验证**：`GET /api/ai/capabilities` 用真实密钥探测 `/v1/models`，只把账号里确实可用的模型列出来（当前 `gpt-image-2.5` / `gpt-image-2.6`）。
+- **结果落库**：生成的图片不走外链，服务端下载后写入 R2 + D1，返回和上传素材一样的 `/api/files/:id`，不会隔天变成 404。
+- **文字生成贴纸**：题材预设 + 自定义提示词 + 模型选择，预留在本机素材库中（`kind: ai-generate`），之后可以用本地抠图加描边。
+- **风格化已有贴纸**：5 种风格预设，把当前贴纸作为参考图上传后重绘；结果另存为新版本（`kind: ai-style`），原图与本地抠图都不被覆盖。
+- **成本与失败都直说**：面板显示真实 token 用量（不编造价格），失败时返回具体错误码，不会拿占位图冒充成功。
+- **透明背景默认关闭**：实测该网关在 `background:"transparent"` 下会稳定 196s 上游超时，同一提示词不加这个字段 15s 出图，所以默认走「先生成、再本机抠图」；服务端在超时/空图时会自动用最小参数重试一次。
 
 ### 剧本演出（小品模式）
 
@@ -320,7 +331,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（150 个，全部通过）
+### 单元测试（170 个，全部通过）
 
 ```bash
 npm test
@@ -346,6 +357,7 @@ npm test
 - 口型位置：长宽比默认值、手标坐标夹取、翻转镜像、旋转跟随、屏幕换算、schema 往返与脏值丢弃。
 - 贴纸蒙版：覆盖率统计、擦除/恢复画笔、软硬笔刷边缘、越界裁剪、形态学膨胀/腐蚀、模糊、交集、收紧、噪点清理。
 - 贴纸领域模型：7 种裁切模式与标签、面向人脸的裁切判定、默认双层描边配置、队列项形状。
+- 图像服务 Provider：配置缺失判定、base URL 规范化、模型白名单、公开能力不泄露密钥、空提示词/越权模型提前拒绝、尺寸兜底、上游错误透传、空图与坏 JSON 视为失败、参考图必须 http(s)、原始字节上传的 content-type、结果下载的大小与来源校验。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 
@@ -370,6 +382,13 @@ node scripts/test-sticker-studio.mjs      # 导入 → 本地识别 → 合成 �
 node scripts/test-sticker-bridge.mjs      # 贴纸作为独立图层进入 Stage
 node scripts/test-batch-bridge.mjs        # 3 张批量 → 刷新恢复 → ZIP → 加入画布
 node scripts/probe-batch-timing.mjs       # 连续处理多张的耗时与完成情况
+
+# AI 生图链路（需要服务端已配置密钥，会产生真实费用）
+node scripts/test-ai-generate.mjs         # 能力探测 → 生成 → R2 落库
+node scripts/test-ai-edit.mjs             # 参考图上传 → 风格化 → R2 落库 → 非图片拒绝
+node scripts/test-ai-generate-panel.mjs   # 面板：生成 → 预览 → 存进本机素材
+node scripts/test-ai-panel.mjs            # 面板：勾选确认门禁 → 风格版另存新版本
+node scripts/test-unified-library.mjs     # 素材库：本机/云端标记、筛选、搜索、选择
 ```
 
 2026-11-12 的贴纸链路实测：
@@ -384,6 +403,13 @@ node scripts/probe-batch-timing.mjs       # 连续处理多张的耗时与完成
 | 批量 → ZIP | ✅ 按钮在完成后可用，包内含 manifest |
 | 批量 → 加入画布 | ✅ 3 张结果变成 3 个独立 `image` 图层 |
 | 单张超时保护 | ✅ 单项超过 120s 标为可重试失败，不阻塞后续项 |
+| AI 能力探测 | ✅ `/api/ai/capabilities` 用真实密钥校验，返回 `gpt-image-2.5` / `gpt-image-2.6` |
+| AI 生成落库 | ✅ 20s 出图，下载后写 R2 + D1，返回 `/api/files/…`（非外链） |
+| AI 风格化 | ✅ 参考图原始字节上传 → 25s 重绘 → 落库；非图片返回 415 |
+| 未授权调用 | ✅ 无 `X-Editor-Key` 时 401 |
+| AI 面板门禁 | ✅ 未勾选确认时按钮禁用，勾选后才可点击 |
+| AI 结果入库 | ✅ `kind: ai-generate` / `ai-style`，原图与本地抠图不被覆盖 |
+| 素材库双作用域 | ✅ 本机/云端标记、类型筛选、搜索、多选、云端删除 |
 
 2026-10-27 的实际结果：
 

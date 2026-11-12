@@ -5,6 +5,7 @@ import { EditorPage } from "./pages/Editor";
 import { PublishedPage } from "./pages/Published";
 import { LibraryPage } from "./pages/Library";
 import { StudioPage } from "./pages/Studio";
+import { UnifiedLibrary } from "./pages/UnifiedLibrary";
 import { Toaster } from "./components/ui";
 
 function ScrollToTop() {
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/editor/:id" element={<EditorPage />} />
         <Route path="/p/:slug" element={<PublishedPage />} />
         <Route path="/library" element={<LibraryPage />} />
+        <Route path="/assets" element={<UnifiedLibrary />} />
         <Route path="/studio/*" element={<StudioPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

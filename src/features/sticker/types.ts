@@ -119,7 +119,7 @@ export interface MaskRecord {
   createdAt: number;
 }
 
-export type StickerVariantKind = "local-cutout" | "manual-mask" | "outline-only" | "ai-style";
+export type StickerVariantKind = "local-cutout" | "manual-mask" | "outline-only" | "ai-style" | "ai-generate";
 
 /** A rendered transparent sticker. */
 export interface StickerVariant {

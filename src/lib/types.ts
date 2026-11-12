@@ -313,6 +313,8 @@ export interface AssetRecord {
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** where the bytes came from; older rows omit it */
+  createdAt?: number;
 }
 
 export interface ApiError {

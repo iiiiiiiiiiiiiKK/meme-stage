@@ -7,6 +7,10 @@ export interface Env {
   AI: Ai;
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION?: string;
+  /** image generation gateway; all three are server-only secrets */
+  IMAGE_API_BASE_URL?: string;
+  IMAGE_API_KEY?: string;
+  IMAGE_API_MODELS?: string;
   ENVIRONMENT?: string;
 }
 

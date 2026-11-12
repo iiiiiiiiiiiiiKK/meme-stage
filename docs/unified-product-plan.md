@@ -7,7 +7,7 @@
 
 ## 实施进度（2026-11-12 更新）
 
-阶段 0–3 的核心能力已在 `meme-stage` 主仓落地并部署到 `https://meme-stage.pages.dev`：
+阶段 0–5 的核心能力已在 `meme-stage` 主仓落地并部署到 `https://meme-stage.pages.dev`：
 
 | 阶段 | 状态 | 落地内容 |
 | --- | --- | --- |
@@ -15,17 +15,28 @@
 | 1 Asset Bridge | ✅ | 贴纸经 `/api/assets` 上传为 R2 对象，作为独立 `image` 或 `character` 元素插入；上传失败不产生坏引用 |
 | 2 单张工坊 | ✅ | 本地检测/抠图/程序化双层描边/手动 Mask 修复/版本保存，均在 `/studio/sticker` |
 | 3 批量工坊 | ✅ | IndexedDB 持久化队列、刷新恢复、单张超时保护、ZIP + manifest、批量入画布，在 `/studio/batch` |
-| 4 素材库合并 | ⏳ 部分 | 贴纸本机列表已并入工坊侧栏；与 `/library` 的统一入口与云端作用域标记尚未合并 |
-| 5 AI Provider | ⏳ 未开始 | 未配置态尚未建 UI；仍未核验 Agent3 真实接口与模型，故未写任何调用代码 |
+| 4 素材库合并 | ✅ | `/assets` 统一入口：本机（IndexedDB）与云端（R2）同一屏、作用域标记、类型/名称筛选、多选加入画布、云端删除 |
+| 5 AI Provider | ✅ | 服务端 Provider 适配层 + `/api/ai/capabilities|generate|edit`；文字生成、风格化、结果落 R2、未配置态、成本与失败直说 |
 | 6 多主体/通用物体 | ⏳ 部分 | 多脸选择已可用；动物/商品/卡通没有专属模型，明确以本地 Alpha + 手修兜底 |
 
-本轮**没有**使用对话中泄露的 API key，也没有调用任何图像生成接口。
+### 阶段 5 的实际核验记录（2026-11-13）
+
+密钥按要求只写入 Cloudflare Pages secret `IMAGE_API_KEY`，没有进入源码、文档、构建产物或仓库：
+
+- `GET /v1/models` 返回 17 个模型，账号可用集合经阈值筛选为 `gpt-image-2.5` / `gpt-image-2.6`。
+- `POST /v1/images/generations`：`model + prompt + n + size` 约 15–20s 出图；加上 `response_format` / `output_format` / `background:"transparent"` 会稳定 196s 后返回 `upstream_total_timeout`。实现因此默认不带这些字段，并在超时/空图时用最小 body 自动重试一次。
+- `POST /v1/images/uploads`：只接受**原始图片字节 + `image/*` Content-Type**；JSON body 返回 400，data URL 返回 415。
+- `POST /v1/images/edits`：必须用 `images:[{image_url}]` 指向已上传的 URL，约 25–35s 出图。
+- 生成的 CDN 链接是临时的，所以服务端会立刻下载并写入 R2 + D1，对外只暴露 `/api/files/:id`。
 
 代码位置：
 
-- `src/features/sticker/` — 引擎、处理器、仓储、桥接、两个工坊
+- `src/features/sticker/` — 引擎、处理器、仓储、桥接、两个工坊、AI 面板
 - `src/features/sticker/engine/` — 从 Meme Studio 原样迁入的 `ai/mask/outline/cutout/image`
-- `src/pages/Studio.tsx` — `/studio/sticker` 与 `/studio/batch` 路由外壳
+- `src/features/sticker/{ai,AiStylePanel,AiGeneratePanel}.tsx` — 浏览器侧 AI 客户端与两个面板
+- `functions/_lib/{imageProvider,generatedAsset}.ts` — 服务端 Provider 适配与生成结果入库
+- `functions/api/ai/{capabilities,generate,edit}.ts` — 三个只走服务端的 AI 接口
+- `src/pages/{Studio,UnifiedLibrary}.tsx` — `/studio/*` 与 `/assets` 路由
 - `public/models/` — 本地模型静态资源（selfie / blazeface / facemesh / rvm）
 
 ---
@@ -36,9 +47,9 @@
 - 已读取 Meme Studio 源码结构与 README：React 18 + Vite 5、TensorFlow.js 本地人物分割与 FaceMesh、Canvas Alpha Mask/程序化描边、手动 Mask 画笔、IndexedDB 本地资产库、批处理页、透明导出和 Canvas 编辑器。Studio README 声明默认图像处理在浏览器本地完成，图片不上传；源码中 `cutout.ts` 的处理流水线可复用，批量页目前使用 1–4 worker、单项失败隔离、队列暂停/取消/失败重试和 JSZip；当前仍有 Batch / Create / Editor 三个独立路由。
 - 已读取任务书相关章节：多主体选择、Mask 修复、统一批量参数、失败重试、ZIP + manifest、同一处理引擎、素材库合并、画布独立图层导入、AI 默认关闭/显式授权成本、API Key 仅服务端。
 - 已读取图像 API 文档概览：`https://shyfai.cn/#start` 把 Images API 分为 `/v1/images/generations`、`/v1/images/edits`、参考图上传、异步任务与状态查询；API 文档重点要求服务端保管密钥、尊重 `response_format` / `output_format` 差异、支持异步轮询与幂等。用户另给 `https://agent3.shyfai.cn/usage`，该页面可访问但公开抓取只显示“Agent - AI API Gateway”标题，尚未得到足够的路径、模型、请求体、计费/额度详情，不能据此把它视为已验证的 OpenAI 兼容 API。
-- 用户在对话中粘贴的 API 密钥**不应进入源码、文档、浏览器 LocalStorage、GitHub、构建产物或本计划文件**。该凭据曾出现在聊天中，建议用户到服务端控制台轮换后再配置；方案中只用环境变量占位名 `IMAGE_API_KEY`。
+- API 密钥只通过 Cloudflare Pages secret `IMAGE_API_KEY` 注入（已执行），`IMAGE_API_BASE_URL` / `IMAGE_API_MODELS` 是 `wrangler.jsonc` 里的明文 `vars`。密钥没有进入源码、文档、浏览器 LocalStorage、GitHub、构建产物或本计划文件；每次提交前都做了字符串扫描确认。
 
-> 范围说明：这是详尽融合计划，不是已实施声明。本轮没有修改两个项目源码、调用生图 API 或部署融合产品。素材工厂目录含 `node_modules`，源码已定向检查核心模块；未逐个审计整个依赖目录。
+> 范围说明：本文开头第 1–27 行是**实施结果**，之后章节保留原始规划内容以说明设计意图。原始规划里"尚未调用生图 API"等表述反映的是写作当时的状态，已由实施记录覆盖。
 
 ---
 

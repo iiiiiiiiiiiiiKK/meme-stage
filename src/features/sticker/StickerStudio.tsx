@@ -23,7 +23,8 @@ import {
   thumbnail,
   type ProcessProgress,
 } from "./processor";
-import { createCanvas, ctx2d, decodeToCanvas, downloadBlob, formatBytes } from "./engine/image";
+import { createCanvas, ctx2d, decodeToCanvas, downloadBlob, formatBytes, makeThumbnail } from "./engine/image";
+import type { AssetRecord } from "../../lib/types";
 import {
   clearStickerData,
   deleteVariant,
@@ -39,6 +40,8 @@ import {
   storageUsage,
 } from "./repository";
 import { importStickers } from "./bridge";
+import { AiStylePanel } from "./AiStylePanel";
+import { AiGeneratePanel } from "./AiGeneratePanel";
 import {
   CUT_MODES,
   DEFAULT_OUTLINE,
@@ -113,6 +116,23 @@ export function StickerStudio() {
   const painting = useRef(false);
 
   const effectiveAlpha = manualAlpha ?? analyze.alpha;
+  const [latestBlob, setLatestBlob] = useState<Blob | null>(null);
+
+  // Keep the most recent saved sticker around so the AI panel can restyle it.
+  useEffect(() => {
+    let alive = true;
+    const newest = variants[0];
+    if (!newest) {
+      setLatestBlob(null);
+      return;
+    }
+    void getVariantBlob(newest.id).then((stored) => {
+      if (alive) setLatestBlob(stored?.blob ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [variants]);
 
   const refresh = useCallback(async () => {
     const [nextSources, nextVariants, nextUsage] = await Promise.all([
@@ -373,6 +393,45 @@ export function StickerStudio() {
   }, [activeSource, maxSide, mode, result]);
 
   /* --------------------------------------------------------------- to Stage */
+
+  /**
+   * Persist an AI-generated cloud asset as a local variant so it behaves like
+   * every other sticker (downloadable, importable, kept as its own version).
+   *
+   * The original local cutout stays untouched. The parent sticker supplies the
+   * source/mask ids, so this still works when the user restored a session without
+   * re-opening the original photo.
+   */
+  const adoptAiAsset = useCallback(
+    async (parent: StickerVariant, asset: AssetRecord) => {
+      try {
+        const response = await fetch(asset.url);
+        if (!response.ok) throw new Error("无法读取生成的图片");
+        const blob = await response.blob();
+        const thumb = await makeThumbnail(blob, 320);
+        await putVariant({
+          sourceId: parent.sourceId,
+          maskId: parent.maskId,
+          parentVariantId: parent.id,
+          kind: "ai-style",
+          name: `${parent.name.slice(0, 24)} · AI`.slice(0, 60),
+          width: asset.width ?? 1024,
+          height: asset.height ?? 1024,
+          mime: blob.type === "image/webp" ? "image/webp" : "image/png",
+          outline: parent.outline,
+          mode: parent.mode,
+          warnings: [],
+          blob,
+          thumb,
+        });
+        await refresh();
+        toast("已保存为独立版本，原图与本地抠图未被覆盖", "success");
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "保存 AI 版本失败", "error");
+      }
+    },
+    [refresh],
+  );
 
   const addToStage = useCallback(
     async (targets: StickerVariant[], asCharacter: boolean) => {
@@ -778,6 +837,25 @@ export function StickerStudio() {
                 </Button>
               </div>
             </div>
+          </Field>
+        ) : null}
+
+        <Field label="从文字生成">
+          <AiGeneratePanel
+            onSaved={() => {
+              void refresh();
+            }}
+          />
+        </Field>
+
+        {variants.length > 0 ? (
+          <Field label="AI 风格版">
+            <AiStylePanel
+              variantId={variants[0].id}
+              variantName={variants[0].name}
+              sourceBlob={latestBlob}
+              onResult={(asset) => void adoptAiAsset(variants[0], asset)}
+            />
           </Field>
         ) : null}
 

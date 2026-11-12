@@ -18,5 +18,11 @@
   ],
   "ai": {
     "binding": "AI"
+  },
+  // Image generation gateway. IMAGE_API_KEY is a *secret* set via
+  // `wrangler pages secret put IMAGE_API_KEY`; it must never be committed here.
+  "vars": {
+    "IMAGE_API_BASE_URL": "https://agent3.shyfai.cn",
+    "IMAGE_API_MODELS": "gpt-image-2.5,gpt-image-2.6"
   }
 }
