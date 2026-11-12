@@ -9,7 +9,10 @@ import type {
   AnimationName,
   BubbleStyle,
   CanvasElement,
+  CueEffect,
   EventDef,
+  Performance,
+  PerformanceCue,
   ProjectData,
   Step,
   StepType,
@@ -210,11 +213,14 @@ function element(raw: unknown, index: number): CanvasElement {
     const i = (v.image ?? {}) as Record<string, unknown>;
     const url = safeUrl(i.url);
     if (!url) throw new ValidationError(`第 ${index + 1} 张图片缺少有效地址`);
+    const animated =
+      i.animated === "gif" || i.animated === "webp" || i.animated === "mp4" ? i.animated : undefined;
     el.image = {
       url,
       thumbUrl: safeUrl(i.thumbUrl) ?? undefined,
       assetId: str(i.assetId, 64) || undefined,
       name: str(i.name, LIMITS.name, "图片"),
+      ...(animated ? { animated } : {}),
     };
   }
 
@@ -252,6 +258,65 @@ function event(raw: unknown, i: number): EventDef {
     steps,
     nextEventId: v.nextEventId ? str(v.nextEventId, 64) : null,
     enabled: bool(v.enabled, true),
+  };
+}
+
+function effect(raw: unknown): CueEffect | null {
+  const v = (raw ?? {}) as Record<string, unknown>;
+  const url = safeUrl(v.url);
+  if (!url) return null;
+  const kind = v.kind === "gif" || v.kind === "webp" || v.kind === "mp4" ? v.kind : "gif";
+  const anchors = ["center", "top", "bottom", "left", "right", "top-left", "top-right"];
+  return {
+    id: str(v.id, 64) || `fx_${Math.random().toString(36).slice(2, 8)}`,
+    url,
+    kind,
+    anchor: anchors.includes(String(v.anchor)) ? (v.anchor as CueEffect["anchor"]) : "center",
+    size: num(v.size, 180, 40, 900),
+    duration: num(v.duration, 1200, 100, 20_000),
+    delay: num(v.delay, 0, 0, 20_000),
+    loop: bool(v.loop),
+    muted: bool(v.muted, true),
+  };
+}
+
+function cue(raw: unknown, index: number): PerformanceCue | null {
+  const v = (raw ?? {}) as Record<string, unknown>;
+  const actorId = str(v.actorId, 64);
+  if (!actorId) return null;
+  const animation = ANIMATION_SET.has(String(v.animation) as AnimationName)
+    ? (v.animation as AnimationName)
+    : undefined;
+  const effects = Array.isArray(v.effects)
+    ? v.effects.slice(0, 6).map(effect).filter((fx): fx is CueEffect => fx !== null)
+    : [];
+  return {
+    id: str(v.id, 64) || `cq_${index}`,
+    actorId,
+    ...(str(v.clipId, 64) ? { clipId: str(v.clipId, 64) } : {}),
+    ...(str(v.text, LIMITS.line) ? { text: str(v.text, LIMITS.line) } : {}),
+    ...(v.waitBefore !== undefined ? { waitBefore: num(v.waitBefore, 0, 0, 20_000) } : {}),
+    ...(v.waitAfter !== undefined ? { waitAfter: num(v.waitAfter, 260, 0, 20_000) } : {}),
+    ...(animation ? { animation } : {}),
+    spotlight: bool(v.spotlight),
+    showBubble: bool(v.showBubble, true),
+    ...(v.moveX !== undefined ? { moveX: num(v.moveX, 0, -20_000, 20_000) } : {}),
+    ...(v.moveY !== undefined ? { moveY: num(v.moveY, 0, -20_000, 20_000) } : {}),
+    ...(effects.length > 0 ? { effects } : {}),
+    lipFlap: bool(v.lipFlap),
+    ...(v.holdMs !== undefined ? { holdMs: num(v.holdMs, 0, 0, 60_000) } : {}),
+  };
+}
+
+function performance(raw: unknown, index: number): Performance {
+  const v = (raw ?? {}) as Record<string, unknown>;
+  const cues = Array.isArray(v.cues) ? v.cues.slice(0, 200).map(cue) : [];
+  return {
+    id: str(v.id, 64) || `pf_${index}`,
+    name: str(v.name, LIMITS.name, "表演") || "表演",
+    cues: cues.filter((c): c is PerformanceCue => c !== null),
+    loop: bool(v.loop),
+    autoPlay: bool(v.autoPlay, true),
   };
 }
 
@@ -293,6 +358,13 @@ export function normalizeProject(raw: unknown): ProjectData {
 
   const settingsRaw = (v.settings ?? {}) as Record<string, unknown>;
 
+  // performances may only reference elements that survived normalisation
+  const performancesRaw = Array.isArray(v.performances) ? v.performances.slice(0, 8) : [];
+  const performances = performancesRaw.map(performance).map((pf) => ({
+    ...pf,
+    cues: pf.cues.filter((c) => ids.has(c.actorId)),
+  }));
+
   const project: ProjectData = {
     version: 1,
     title: str(v.title, LIMITS.title, "未命名作品") || "未命名作品",
@@ -308,6 +380,7 @@ export function normalizeProject(raw: unknown): ProjectData {
     },
     elements,
     events,
+    performances,
     settings: {
       audioMode: settingsRaw.audioMode === "mix" ? "mix" : "single",
       reactions: bool(settingsRaw.reactions, true),
@@ -315,6 +388,7 @@ export function normalizeProject(raw: unknown): ProjectData {
       allowRemix: bool(settingsRaw.allowRemix, true),
       authorName: str(settingsRaw.authorName, 40),
       soundHint: str(settingsRaw.soundHint, 60, "轻点人物，听他们开口") || "轻点人物，听他们开口",
+      showPlayButton: bool(settingsRaw.showPlayButton, true),
     },
     updatedAt: typeof v.updatedAt === "number" ? num(v.updatedAt, Date.now(), 0, 9e15) : Date.now(),
   };

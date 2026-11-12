@@ -19,6 +19,7 @@ import { PublishDialog } from "../components/editor/PublishDialog";
 import { Button, IconButton, Spinner, cn, toast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { useIsMobile } from "../hooks/useMediaQuery";
+import { useDropTarget, useQuickImport } from "../hooks/useQuickImport";
 
 type MobilePanel = "left" | "right" | "dock" | null;
 
@@ -38,6 +39,11 @@ export function EditorPage() {
   const [exporting, setExporting] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const { importFiles, progress: importProgress } = useQuickImport();
+  const dragging = useDropTarget(stageRef, (files) => {
+    void importFiles(files);
+  });
   const projectId = useEditor((s) => s.projectId);
   const liveProject = useEditor((s) => (preview.open ? s.project : null));
   const conflict = useEditor((s) => s.conflict);
@@ -259,8 +265,36 @@ export function EditorPage() {
         ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 flex-1">
+          <div className="relative min-h-0 flex-1" ref={stageRef}>
             <EditorCanvas ref={canvasRef} />
+            {dragging ? (
+              <div className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-xl border-2 border-dashed border-neon bg-neon/10 backdrop-blur-sm">
+                <div className="rounded-lg border border-neon/50 bg-ink/90 px-4 py-2 text-center">
+                  <div className="font-display text-[15px] text-neon">松手就放到画布上</div>
+                  <div className="mt-0.5 text-[10px] text-mute">
+                    图片按文件名自动命名，音频按同名自动绑定
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {importProgress.running || importProgress.total > 0 ? (
+              <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex items-center gap-2 rounded-md border border-line bg-ink/90 px-2.5 py-1.5 text-[10px] text-paper backdrop-blur">
+                <span className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-3">
+                  <span
+                    className="block h-full bg-neon transition-all"
+                    style={{
+                      width: `${Math.round((importProgress.done / Math.max(1, importProgress.total)) * 100)}%`,
+                    }}
+                  />
+                </span>
+                {importProgress.running
+                  ? `导入中 ${importProgress.done}/${importProgress.total}`
+                  : `已导入 ${importProgress.done - importProgress.failed} 个`}
+                {importProgress.failed > 0 ? (
+                  <span className="text-warn">· {importProgress.failed} 个失败</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {!isMobile ? dock : null}
         </main>

@@ -76,8 +76,7 @@ test.describe("landing", () => {
   });
 });
 
-test.describe("published demo", () => {
-  test("renders OG-friendly title, sound hint and interactive characters", async ({ page }) => {
+test.describe("published demo", () => {  test("renders OG-friendly title, sound hint and interactive characters", async ({ page }) => {
     await page.goto("/p/demo", { waitUntil: "domcontentloaded" });
     await expect(page.locator("header")).toContainText("全员开麦");
     await page.waitForSelector('[data-testid="visitor"] canvas');

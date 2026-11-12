@@ -115,6 +115,81 @@ function applyPulse(node: Konva.Group, anim: AnimationName, base: { x: number; y
           }),
       });
       break;
+    case "nod":
+      tween(node, {
+        rotation: base.rotation + 6,
+        duration: 0.12,
+        onFinish: () =>
+          tween(node, {
+            rotation: base.rotation - 3,
+            duration: 0.12,
+            onFinish: () => tween(node, { rotation: base.rotation, duration: 0.1 }),
+          }),
+      });
+      break;
+    case "turn":
+      // squash horizontally like a card flip, then settle back
+      tween(node, {
+        scaleX: -0.4,
+        duration: 0.16,
+        easing: Konva.Easings.EaseInOut,
+        onFinish: () =>
+          tween(node, { scaleX: 1, duration: 0.24, easing: Konva.Easings.BackEaseOut }),
+      });
+      break;
+    case "jump":
+      tween(node, {
+        y: base.y - Math.max(24, node.height() * 0.12),
+        duration: 0.16,
+        easing: Konva.Easings.EaseOut,
+        onFinish: () =>
+          tween(node, { y: base.y, duration: 0.22, easing: Konva.Easings.BounceEaseOut }),
+      });
+      break;
+    case "zoomIn":
+      tween(node, {
+        scaleX: 1.16,
+        scaleY: 1.16,
+        duration: 0.22,
+        easing: Konva.Easings.EaseOut,
+        onFinish: () => tween(node, { scaleX: 1, scaleY: 1, duration: 0.3 }),
+      });
+      break;
+    case "zoomOut":
+      tween(node, {
+        scaleX: 0.88,
+        scaleY: 0.88,
+        duration: 0.2,
+        onFinish: () => tween(node, { scaleX: 1, scaleY: 1, duration: 0.26 }),
+      });
+      break;
+    case "highlight":
+      node.scale({ x: 1.08, y: 1.08 });
+      tween(node, { scaleX: 1.03, scaleY: 1.03, duration: 0.18 });
+      break;
+    case "reaction":
+      // quick "!" style jerk: pop up, tilt, settle
+      tween(node, {
+        y: base.y - 14,
+        scaleX: 1.12,
+        scaleY: 1.12,
+        duration: 0.1,
+        onFinish: () =>
+          tween(node, {
+            y: base.y,
+            scaleX: 1,
+            scaleY: 1,
+            rotation: base.rotation - 5,
+            duration: 0.14,
+            onFinish: () =>
+              tween(node, {
+                rotation: base.rotation,
+                duration: 0.2,
+                easing: Konva.Easings.ElasticEaseOut,
+              }),
+          }),
+      });
+      break;
     case "pop":
     default:
       node.scale({ x: 0.62, y: 0.62 });

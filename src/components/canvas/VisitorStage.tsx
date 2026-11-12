@@ -2,8 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { Stage, Layer, Rect, Image as KonvaImage } from "react-konva";
 import Konva from "konva";
 import { ElementNode, type NodeRegistry, type PulseSignal } from "./ElementNode";
-import type { BubblePlacement, BubbleStyle, CanvasElement, ProjectData, VoiceClip } from "../../lib/types";
+import type {
+  BubblePlacement,
+  BubbleStyle,
+  CanvasElement,
+  CueEffect,
+  ProjectData,
+  VoiceClip,
+} from "../../lib/types";
 import { InteractionRunner, type RuntimeHooks } from "../../lib/engine";
+import { PerformanceRunner, type PerformanceHooks, type PerformanceState } from "../../lib/performance";
 import { audioEngine } from "../../lib/audio";
 import { chooseVoice } from "../../lib/voice";
 import { bubbleAnchorPoint } from "../../lib/bubblePosition";
@@ -20,6 +28,20 @@ interface BubbleItem {
   style: BubbleStyle;
   name: string;
   until: number;
+}
+
+/** a sticker currently on stage (GIF / WebP / MP4 during a cue) */
+interface LiveEffect {
+  key: string;
+  actorId: string;
+  url: string;
+  kind: "gif" | "webp" | "mp4";
+  anchor: string;
+  size: number;
+  x: number;
+  y: number;
+  loop: boolean;
+  muted: boolean;
 }
 
 interface BubbleView extends BubbleItem {
@@ -65,6 +87,15 @@ export function VisitorStage({
   const [flash, setFlash] = useState(0);
   const [interacted, setInteracted] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
+  /* ------- performance runtime (剧本演出) ------- */
+  const [perfState, setPerfState] = useState<PerformanceState>("idle");
+  const [activeCue, setActiveCue] = useState(-1);
+  const [spotlightId, setSpotlightId] = useState<string | null>(null);
+  const [effects, setEffects] = useState<LiveEffect[]>([]);
+  const [lipFlapId, setLipFlapId] = useState<string | null>(null);
+  const perfRunnerRef = useRef<PerformanceRunner | null>(null);
+  const effectTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const performance = project.performances?.[0] ?? null;
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(() =>
     project.background.type === "image" && project.background.url
       ? cachedImage(project.background.url)
@@ -208,9 +239,135 @@ export function VisitorStage({
   );
 
   const runnerRef = useRef<InteractionRunner | null>(null);
+  const spawnEffect = useCallback((actorId: string, fx: CueEffect) => {
+    const el = projectRef.current.elements.find((item) => item.id === actorId);
+    if (!el) return () => undefined;
+    const key = `${fx.id}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+    const anchorOffset: Record<string, { x: number; y: number }> = {
+      center: { x: 0, y: 0 },
+      top: { x: 0, y: -el.height / 2 },
+      bottom: { x: 0, y: el.height / 2 },
+      left: { x: -el.width / 2, y: 0 },
+      right: { x: el.width / 2, y: 0 },
+      "top-left": { x: -el.width / 2, y: -el.height / 2 },
+      "top-right": { x: el.width / 2, y: -el.height / 2 },
+    };
+    const off = anchorOffset[fx.anchor] ?? { x: 0, y: 0 };
+    const live: LiveEffect = {
+      key,
+      actorId,
+      url: fx.url,
+      kind: fx.kind,
+      anchor: fx.anchor,
+      size: fx.size,
+      x: el.x + el.width / 2 + off.x,
+      y: el.y + el.height / 2 + off.y,
+      loop: fx.loop ?? false,
+      muted: fx.muted ?? true,
+    };
+    const show = () => setEffects((prev) => [...prev, live]);
+    const startTimer = setTimeout(show, Math.max(0, fx.delay ?? 0));
+    const endTimer = setTimeout(() => {
+      setEffects((prev) => prev.filter((item) => item.key !== key));
+      effectTimers.current.delete(key);
+    }, Math.max(120, (fx.delay ?? 0) + fx.duration));
+    effectTimers.current.set(key, endTimer);
+    return () => {
+      clearTimeout(startTimer);
+      clearTimeout(endTimer);
+      effectTimers.current.delete(key);
+      setEffects((prev) => prev.filter((item) => item.key !== key));
+    };
+  }, []);
+
+  const clearEffects = useCallback(() => {
+    for (const timer of effectTimers.current.values()) clearTimeout(timer);
+    effectTimers.current.clear();
+    setEffects([]);
+  }, []);
+
+  const perfHooks = useMemo<PerformanceHooks>(
+    () => ({
+      getProject: () => projectRef.current,
+      resolveClip: (actorId, clipId) => {
+        const el = projectRef.current.elements.find((item) => item.id === actorId);
+        const voices = el?.character?.voices ?? [];
+        if (clipId) return voices.find((clip) => clip.id === clipId) ?? null;
+        const last = voiceCursors.current.get(actorId) ?? -1;
+        const picked = chooseVoice(voices, el?.character?.voiceMode ?? "cycle", last);
+        if (!picked) return null;
+        voiceCursors.current.set(actorId, picked.index);
+        return picked.clip;
+      },
+      playVoice: async (_actorId, clip) => {
+        if (clip.source !== "device" && !clip.url) return;
+        await audioEngine.play(clip, projectRef.current.settings.audioMode);
+      },
+      stopAudio: () => audioEngine.stop(),
+      showBubble: (actorId, text, holdSeconds) => {
+        const el = projectRef.current.elements.find((item) => item.id === actorId);
+        if (!el) return;
+        const style = el.character?.bubble ?? makeBubble("comic");
+        const key = `${actorId}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+        setBubbles((prev) =>
+          [
+            ...prev.filter((b) => b.elementId !== actorId),
+            { key, elementId: actorId, text, style, name: el.character?.name ?? "", until: Date.now() + holdSeconds * 1000 },
+          ].slice(-4),
+        );
+        const existing = timers.current.get(actorId);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+          setBubbles((prev) => prev.filter((b) => b.key !== key));
+          timers.current.delete(actorId);
+        }, Math.max(900, holdSeconds * 1000));
+        timers.current.set(actorId, timer);
+      },
+      hideBubble: (actorId) => {
+        setBubbles((prev) => prev.filter((b) => b.elementId !== actorId));
+      },
+      animate: (actorId, animation) =>
+        setPulses((prev) => ({ ...prev, [actorId]: { anim: animation, tick: Date.now() } })),
+      moveBy: (actorId, dx, dy) =>
+        setOffsets((prev) => {
+          const current = prev[actorId] ?? { x: 0, y: 0 };
+          return { ...prev, [actorId]: { x: current.x + dx, y: current.y + dy } };
+        }),
+      spotlight: (actorId) => setSpotlightId(actorId),
+      playEffect: spawnEffect,
+      clearEffects,
+      lipFlap: (actorId) => setLipFlapId(actorId),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      onCue: (index) => setActiveCue(index),
+      onState: (state) => setPerfState(state),
+      onError: (message) => onError?.(message),
+    }),
+    [onError, spawnEffect, clearEffects],
+  );
+
   useEffect(() => {
     runnerRef.current = new InteractionRunner(hooks);
   }, [hooks]);
+
+  useEffect(() => {
+    perfRunnerRef.current = new PerformanceRunner(perfHooks);
+  }, [perfHooks]);
+
+  useEffect(
+    () => () => {
+      perfRunnerRef.current?.stop();
+      audioEngine.stop();
+    },
+    [],
+  );
+
+  const startPerformance = useCallback(() => {
+    if (!performance) return;
+    audioEngine.markUnlocked();
+    setInteracted(true);
+    setHintVisible(false);
+    void perfRunnerRef.current?.play(performance);
+  }, [performance]);
 
   useEffect(() => {
     audioEngine.onError = (message) => onError?.(message);
@@ -415,7 +572,64 @@ export function VisitorStage({
       .filter((item): item is BubbleView => item !== null);
   }, [bubbles, project.elements, viewport, offsets, size.width]);
 
+  const effectViews = useMemo(
+    () =>
+      effects.map((fx) => {
+        const screen = worldToScreen(viewport, fx.x, fx.y);
+        return {
+          ...fx,
+          screenX: screen.x,
+          screenY: screen.y,
+          renderedSize: Math.max(24, fx.size * viewport.scale),
+        };
+      }),
+    [effects, viewport],
+  );
+
+  // lip flap: a simple two-frame mouth over the speaker's head area.
+  // Cheaper and more reliable than per-visor mouth art, and reads well for memes.
+  const lipFlapView = useMemo(() => {
+    if (!lipFlapId) return null;
+    const el = project.elements.find((item) => item.id === lipFlapId);
+    if (!el) return null;
+    const offset = offsets[el.id] ?? { x: 0, y: 0 };
+    const cx = el.x + offset.x + el.width / 2;
+    const cy = el.y + offset.y + el.height * 0.34;
+    const screen = worldToScreen(viewport, cx, cy);
+    const w = Math.max(12, el.width * 0.16 * viewport.scale);
+    return { x: screen.x, y: screen.y, w, h: w * 0.55 };
+  }, [lipFlapId, project.elements, offsets, viewport]);
+
   const hasVoices = project.elements.some((el) => (el.character?.voices.length ?? 0) > 0);
+  const showPlayButton =
+    !!performance && performance.cues.length > 0 && project.settings.showPlayButton !== false;
+
+  // Animated images (GIF / animated WebP / MP4) cannot animate inside Konva, so
+  // they render as DOM overlays above the stage in the current viewport.
+  const animatedViews = useMemo(
+    () =>
+      visible
+        .filter((el) => el.type === "image" && el.image?.animated && el.image.url)
+        .map((el) => {
+          const offset = offsets[el.id] ?? { x: 0, y: 0 };
+          const screen = worldToScreen(viewport, el.x + offset.x, el.y + offset.y);
+          const dimmed = spotlightId !== null && el.id !== spotlightId;
+          return {
+            id: el.id,
+            url: el.image!.url,
+            kind: el.image!.animated!,
+            x: screen.x,
+            y: screen.y,
+            width: el.width * viewport.scale,
+            height: el.height * viewport.scale,
+            rotation: el.rotation,
+            opacity: dimmed ? Math.max(0.18, el.opacity * 0.35) : el.opacity,
+            flipX: el.flipX,
+            flipY: el.flipY,
+          };
+        }),
+    [visible, viewport, offsets, spotlightId],
+  );
 
   return (
     <div
@@ -468,10 +682,18 @@ export function VisitorStage({
           <Layer>
             {visible.map((el) => {
               const offset = offsets[el.id] ?? { x: 0, y: 0 };
+              const dimmed = spotlightId !== null && el.id !== spotlightId;
+              // animated media is painted by the DOM overlay below, not Konva
+              if (el.type === "image" && el.image?.animated) return null;
               return (
                 <ElementNode
                   key={el.id}
-                  el={{ ...el, x: el.x + offset.x, y: el.y + offset.y }}
+                  el={{
+                    ...el,
+                    x: el.x + offset.x,
+                    y: el.y + offset.y,
+                    opacity: dimmed ? Math.max(0.18, el.opacity * 0.35) : el.opacity,
+                  }}
                   interactive
                   pulse={pulses[el.id] ?? null}
                   registry={registry.current}
@@ -482,6 +704,78 @@ export function VisitorStage({
           </Layer>
         </Stage>
       ) : null}
+
+      {animatedViews.map((media) => (
+        <div
+          key={media.id}
+          className="pointer-events-none absolute z-10 overflow-hidden"
+          data-testid="animated-media"
+          style={{
+            left: media.x,
+            top: media.y,
+            width: media.width,
+            height: media.height,
+            opacity: media.opacity,
+            transform: `rotate(${media.rotation}deg) scale(${media.flipX ? -1 : 1}, ${media.flipY ? -1 : 1})`,
+            transformOrigin: "center",
+          }}
+        >
+          {media.kind === "mp4" ? (
+            <video
+              src={media.url}
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <img src={media.url} alt="" className="h-full w-full object-contain" />
+          )}
+        </div>
+      ))}
+
+      {lipFlapView ? (
+        <div
+          className="pointer-events-none absolute z-20 rounded-full bg-ink/85"
+          data-testid="lip-flap"
+          style={{
+            left: lipFlapView.x,
+            top: lipFlapView.y,
+            width: lipFlapView.w,
+            height: lipFlapView.h,
+            transform: "translate(-50%, -50%)",
+            animation: "lip-flap 0.24s steps(2, end) infinite",
+          }}
+        />
+      ) : null}
+
+      {effectViews.map((fx) => (
+        <div
+          key={fx.key}
+          className="pointer-events-none absolute z-20"
+          data-testid="cue-effect"
+          style={{
+            left: fx.screenX,
+            top: fx.screenY,
+            width: fx.renderedSize,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          {fx.kind === "mp4" ? (
+            <video
+              src={fx.url}
+              autoPlay
+              muted={fx.muted}
+              loop={fx.loop}
+              playsInline
+              className="h-auto w-full"
+            />
+          ) : (
+            <img src={fx.url} alt="" className="h-auto w-full" />
+          )}
+        </div>
+      ))}
 
       {bubbleViews.map((bubble) =>
         bubble ? (
@@ -496,6 +790,46 @@ export function VisitorStage({
           />
         ) : null,
       )}
+
+      {showPlayButton && !compact ? (
+        <div className="absolute inset-x-0 top-3 z-30 flex justify-center">
+          <div className="flex items-center gap-1.5 rounded-full border border-neon/40 bg-ink/90 px-1.5 py-1.5 shadow-lg backdrop-blur">
+            <button
+              type="button"
+              data-testid="performance-play"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (perfState === "playing") perfRunnerRef.current?.pause();
+                else if (perfState === "paused") perfRunnerRef.current?.resume();
+                else startPerformance();
+              }}
+              className="flex items-center gap-1.5 rounded-full bg-neon px-3 py-1 text-[11px] font-bold text-ink"
+            >
+              <Icon name={perfState === "playing" ? "pause" : "play"} size={12} />
+              {perfState === "playing" ? "暂停" : perfState === "paused" ? "继续" : "开始表演"}
+            </button>
+            {perfState !== "idle" ? (
+              <button
+                type="button"
+                data-testid="performance-stop"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  perfRunnerRef.current?.stop();
+                  setActiveCue(-1);
+                }}
+                className="rounded-full border border-line px-2.5 py-1 text-[11px] text-mute hover:text-paper"
+              >
+                停止
+              </button>
+            ) : null}
+            {perfState !== "idle" ? (
+              <span className="pr-1 text-[10px] tabular-nums text-mute">
+                {Math.max(1, activeCue + 1)}/{performance?.cues.length ?? 0}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {flash ? (
         <div

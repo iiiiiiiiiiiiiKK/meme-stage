@@ -101,7 +101,13 @@ export const api = {
 
   async uploadAsset(
     file: Blob,
-    meta: { kind: "image" | "audio" | "cover"; name: string; width?: number; height?: number; duration?: number },
+    meta: {
+      kind: "image" | "audio" | "video" | "cover";
+      name: string;
+      width?: number;
+      height?: number;
+      duration?: number;
+    },
   ): Promise<AssetRecord> {
     const form = new FormData();
     form.append("file", file, meta.name);

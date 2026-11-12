@@ -280,6 +280,12 @@ function ProjectInspector({ project }: { project: ProjectData }) {
           checked={project.settings.allowRemix}
           onChange={(value) => mutate((draft) => void (draft.settings.allowRemix = value))}
         />
+        <Switch
+          label="显示「开始表演」按钮"
+          hint="有剧本时，访客可以一键看完整个小品"
+          checked={project.settings.showPlayButton !== false}
+          onChange={(value) => mutate((draft) => void (draft.settings.showPlayButton = value))}
+        />
       </Section>
     </PanelShell>
   );

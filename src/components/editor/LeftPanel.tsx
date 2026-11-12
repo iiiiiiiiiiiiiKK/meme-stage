@@ -5,7 +5,8 @@ import { Icon } from "../Icon";
 import { Button, EmptyState, IconButton, TextInput, cn, toast } from "../ui";
 import type { CanvasElement } from "../../lib/types";
 import { audioEngine } from "../../lib/audio";
-import { audioDuration, formatBytes, prepareImage } from "../../lib/image";
+import { audioDuration, formatBytes, prepareImage, probeImage } from "../../lib/image";
+import { createMedia } from "../../lib/defaults";
 import { api } from "../../lib/api";
 import { buildCharacterElement, buildDemoElement, buildText, placeSize } from "../../lib/characters";
 import { DEMO_CHARACTERS } from "../../data/demoAssets";
@@ -223,6 +224,17 @@ function CharacterRow({ el, selected }: { el: CanvasElement; selected: boolean }
   );
 }
 
+/** dimensions for an animated upload; MP4 reports nothing useful, so fall back */
+async function probeMotionSize(file: File, kind: "gif" | "webp" | "mp4") {
+  if (kind === "mp4") return { width: undefined, height: undefined, duration: undefined };
+  try {
+    const size = await probeImage(file);
+    return { width: size.width, height: size.height };
+  } catch {
+    return { width: undefined, height: undefined };
+  }
+}
+
 function AssetsTab() {
   const project = useEditor((s) => s.project);
   const selection = useEditor((s) => s.selection);
@@ -237,6 +249,51 @@ function AssetsTab() {
   const [uploading, setUploading] = useState(false);
   const imageInput = useRef<HTMLInputElement | null>(null);
   const audioInput = useRef<HTMLInputElement | null>(null);
+  const motionInput = useRef<HTMLInputElement | null>(null);
+
+  const uploadMotion = async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploading(true);
+    let added = 0;
+    for (const file of files) {
+      try {
+        const lower = file.name.toLowerCase();
+        const kind: "gif" | "webp" | "mp4" = lower.endsWith(".mp4")
+          ? "mp4"
+          : lower.endsWith(".webp")
+            ? "webp"
+            : "gif";
+        const meta = await probeMotionSize(file, kind);
+        const asset = await api.uploadAsset(file, {
+          kind: kind === "mp4" ? "video" : "image",
+          name: file.name,
+          ...meta,
+        });
+        const width = Math.min(project.width * 0.4, 360);
+        const height = Math.round(width / Math.max(0.2, (meta.width ?? 360) / (meta.height ?? 360)));
+        const el = createMedia({
+          url: asset.url,
+          name: file.name.replace(/\.[^.]+$/, "").slice(0, 20),
+          assetId: asset.id,
+          animated: kind,
+          width,
+          height,
+          x: Math.round(project.width / 2 - width / 2 + (Math.random() - 0.5) * 80),
+          y: Math.round(project.height / 2 - height / 2 + (Math.random() - 0.5) * 60),
+          z: 20,
+        });
+        addElements([el]);
+        added += 1;
+      } catch (error) {
+        toast(
+          `${file.name}${error instanceof Error ? `：${error.message}` : " 上传失败"}`,
+          "error",
+        );
+      }
+    }
+    setUploading(false);
+    if (added > 0) toast(`已加入 ${added} 个动图 / 视频`, "success");
+  };
 
   const selectedCharacter = project.elements.find(
     (el) => el.id === selection[0] && el.type === "character",
@@ -342,6 +399,29 @@ function AssetsTab() {
           上传音频
         </Button>
       </div>
+
+      <input
+        ref={motionInput}
+        type="file"
+        accept="image/gif,image/webp,video/mp4"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.currentTarget.value = "";
+          void uploadMotion(files);
+        }}
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        icon="sparkles"
+        className="mt-2 w-full"
+        disabled={uploading}
+        onClick={() => motionInput.current?.click()}
+      >
+        上传动图 / 短视频（GIF · WebP · MP4）
+      </Button>
 
       <div className="mt-4">
         <div className="mb-2 flex items-center justify-between">

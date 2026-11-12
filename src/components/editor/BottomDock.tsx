@@ -3,12 +3,15 @@ import { useEditor } from "../../store/editor";
 import { Icon } from "../Icon";
 import { Button, IconButton, Select, TextInput, cn } from "../ui";
 import type { AnimationName, CanvasElement, EventDef, Step, StepType } from "../../lib/types";
-import { ANIMATIONS, STEP_TYPES, makeStep } from "../../lib/defaults";
+import { ANIMATIONS, ANIMATION_LABELS, STEP_TYPES, makeStep } from "../../lib/defaults";
+import { ScriptPanel } from "./ScriptPanel";
+import { BulkPanel } from "./BulkPanel";
+import { TemplatePanel } from "./TemplatePanel";
 
-type Tab = "layers" | "events";
+type Tab = "script" | "events" | "layers" | "bulk" | "templates";
 
 export function BottomDock({ onTest }: { onTest: (triggerId: string) => void }) {
-  const [tab, setTab] = useState<Tab>("events");
+  const [tab, setTab] = useState<Tab>("script");
   const [open, setOpen] = useState(true);
   const project = useEditor((s) => s.project);
   const events = project.events;
@@ -18,7 +21,7 @@ export function BottomDock({ onTest }: { onTest: (triggerId: string) => void }) 
   );
 
   return (
-    <div className={cn("z-20 shrink-0 border-t border-line bg-ink-2", open ? "h-[248px]" : "h-10")}>
+    <div className={cn("z-20 shrink-0 border-t border-line bg-ink-2", open ? "h-[300px]" : "h-10")}>
       <div className="flex h-10 items-center gap-1 border-b border-line/60 px-2">
         <button
           type="button"
@@ -28,25 +31,50 @@ export function BottomDock({ onTest }: { onTest: (triggerId: string) => void }) 
         >
           <Icon name={open ? "chevron-down" : "chevron-up"} size={15} />
         </button>
+        <TabButton active={tab === "script"} onClick={() => setTab("script")} icon="play">
+          剧本
+          <span className="ml-1 rounded bg-ink px-1 text-[9px] text-mute">
+            {project.performances?.[0]?.cues.length ?? 0}
+          </span>
+        </TabButton>
         <TabButton active={tab === "events"} onClick={() => setTab("events")} icon="workflow">
-          互动编排
+          互动
           <span className="ml-1 rounded bg-ink px-1 text-[9px] text-mute">{events.length}</span>
         </TabButton>
         <TabButton active={tab === "layers"} onClick={() => setTab("layers")} icon="layers">
           图层
           <span className="ml-1 rounded bg-ink px-1 text-[9px] text-mute">{project.elements.length}</span>
         </TabButton>
+        <TabButton active={tab === "bulk"} onClick={() => setTab("bulk")} icon="users">
+          批量
+        </TabButton>
+        <TabButton active={tab === "templates"} onClick={() => setTab("templates")} icon="grid">
+          模板
+        </TabButton>
         <div className="ml-auto hidden items-center gap-2 text-[10px] text-mute sm:flex">
-          <span className="flex items-center gap-1">
-            <Icon name="info" size={11} />
-            事件按顺序执行，可勾选「同时」让气泡和声音一起出现
-          </span>
+          {tab === "script" ? (
+            <span className="flex items-center gap-1">
+              <Icon name="info" size={11} />
+              一行一句台词，按顺序自动演；可导入 CSV / JSON
+            </span>
+          ) : tab === "events" ? (
+            <span className="flex items-center gap-1">
+              <Icon name="info" size={11} />
+              事件按顺序执行，可勾选「同时」让气泡和声音一起出现
+            </span>
+          ) : null}
         </div>
       </div>
       {open ? (
-        <div className="h-[208px] min-h-0">
-          {tab === "layers" ? (
+        <div className="h-[260px] min-h-0">
+          {tab === "script" ? (
+            <ScriptPanel onTest={() => onTest(characters[0]?.id ?? "")} />
+          ) : tab === "layers" ? (
             <LayersList />
+          ) : tab === "bulk" ? (
+            <BulkPanel />
+          ) : tab === "templates" ? (
+            <TemplatePanel />
           ) : (
             <EventsPanel onTest={onTest} characters={characters} />
           )}
@@ -64,7 +92,7 @@ function TabButton({
 }: {
   active: boolean;
   onClick: () => void;
-  icon: "workflow" | "layers";
+  icon: "workflow" | "layers" | "play" | "users" | "grid";
   children: React.ReactNode;
 }) {
   return (
@@ -529,7 +557,7 @@ function StepRow({
         >
           {ANIMATIONS.map((anim) => (
             <option key={anim} value={anim}>
-              {anim}
+              {ANIMATION_LABELS[anim]}
             </option>
           ))}
         </Select>

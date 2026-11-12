@@ -21,7 +21,7 @@ export interface ProjectRow {
 export interface AssetRow {
   id: string;
   owner_hash: string;
-  kind: "image" | "audio" | "cover";
+  kind: "image" | "audio" | "video" | "cover";
   object_key: string;
   mime: string;
   size: number;

@@ -1,0 +1,21 @@
+import { chromium } from "@playwright/test";
+const base = "https://meme-stage.pages.dev";
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+page.on("pageerror", (e) => console.log("pageerror", e.message));
+await page.goto(`${base}/editor`, { waitUntil: "domcontentloaded" });
+await page.waitForSelector('[data-testid="canvas"] canvas');
+await page.waitForTimeout(1200);
+await page.getByRole("button", { name: "随机熟人" }).click();
+await page.waitForTimeout(1500);
+console.log("elements:", await page.evaluate(() => {
+  const keys = Object.keys(localStorage).filter((k) => k.startsWith("ms.draft.") && k !== "ms.draft.index");
+  const items = keys.map((k) => JSON.parse(localStorage.getItem(k)));
+  if (!items.length) return "no draft";
+  return items.sort((a, b) => b.savedAt - a.savedAt)[0].project.elements.length;
+}));
+await page.getByRole("button", { name: "批量", exact: true }).click();
+await page.waitForTimeout(600);
+console.log("rows:", await page.locator("tbody tr").count());
+console.log("table text:", (await page.locator("table").innerText().catch(() => "no table")).slice(0, 200));
+await browser.close();

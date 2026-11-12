@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-70%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-112%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -47,6 +47,14 @@
 | 录音 · 波形裁剪 |
 | --- |
 | ![录音](docs/screenshots/record.png) |
+
+| 剧本时间线 · 一行一句 | 三人小品演出 |
+| --- | --- |
+| ![剧本](docs/screenshots/script.png) | ![演出](docs/screenshots/performance.png) |
+
+| 批量工作台 · 表格化编辑 | 舞台模板 |
+| --- | --- |
+| ![批量](docs/screenshots/bulk.png) | ![模板](docs/screenshots/templates.png) |
 | 手机端作品页 | 手机端编辑器 |
 | --- | --- |
 | ![手机作品页](docs/screenshots/mobile-published.png) | ![手机编辑器](docs/screenshots/mobile-editor.png) |
@@ -54,6 +62,27 @@
 ---
 
 ## 已实现的功能
+
+### 剧本演出（小品模式）
+
+- **一键演出**：三四个角色排好台词，点「开始表演」就按顺序自动说话；支持暂停 / 继续 / 停止 / 循环。
+- **底部剧本时间线**：每行可选人物、语音、台词、动作、停顿、聚光、口型；行可上下移动、删除。
+- **动作库扩充**：弹跳、抖动、弹出、旋转、呼吸、点头、转身、跳起、拉近、拉远、高亮、惊讶反应。
+- **聚光**：说话的人保持原亮度，其他人自动变暗，舞台感更强。
+- **口型开合**：说话时在人物头部叠一个两帧嘴部动画，适合 Meme 风格。
+- **特效贴纸**：每行可挂 GIF / WebP / MP4，按位置（头顶 / 脚下 / 左右 / 四角）、大小、时长播放，MP4 静音自动播放。
+- **动图元素**：素材面板可上传 GIF / 动图 WebP / 短 MP4，作为独立元素放到画布；编辑器显示首帧，访客页用 DOM 层真实播放动画，支持旋转、翻转、透明度和聚光变暗。
+- **剧本导入导出**：CSV（`order,actor,line,audio,action,waitAfter,spotlight`）或 JSON，按人物名匹配、按音频名匹配；也能导出成 CSV 再改。
+- 访客页在有剧本时显示「开始表演」按钮，可在作品设置里关闭。
+
+### 批量工作台
+
+- **拖入即导入**：把图片拖到画布上，或直接 `Ctrl/Cmd + V` 粘贴，立即出现在画布并后台并发上传（并发 3）。
+- **文件名即内容**：`猫猫头--我听不懂但是喵.png` 会自动得到人物名和台词；`老K-01.wav` / `老K--台词--02.wav` 按同名自动绑定到人物。
+- **底部批量面板**：表格列出所有人物的名称、语音数、台词、图层，可直接改名、搜索、按图层/名字/语音排序。
+- **批量操作**：统一命名前缀、批量写台词、统一气泡预设、统一音量、统一高度、按 6 种布局重新排布。
+- **互动配方**：点谁谁说话 / 按顺序开麦 / 随机点名接梗 / 三轮对话 / 全员同时开口，一键生成事件。
+- **模板**：内置「全员开麦 / 群聊截图 / 群像海报 / Meme 墙 / 对话舞台」5 个舞台，也可把当前画布存成模板；套用只改画幅、背景、气泡、音量模式和人物高度，不动图片、语音和互动。
 
 ### 无限画布
 
@@ -270,7 +299,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（70 个，全部通过）
+### 单元测试（112 个，全部通过）
 
 ```bash
 npm test
@@ -285,6 +314,13 @@ npm test
 - 气泡定位：默认上方、自动翻转、四种锚点、世界坐标偏移、旧数据默认值。
 - 视口几何：适配、围绕指针缩放、吸附、旋转内容包围盒。
 - 音频缓存：重复预加载不重复建元素、超出上限按需淘汰、正在播放的片段不被淘汰、`release()` 释放全部缓冲。
+- 剧本运行时：顺序执行、动作/聚光/气泡、中途停止、暂停续播、空剧本报错、无音频降级为纯台词、循环。
+- 剧本导入：CSV（含表头/无表头/中文动作名）、JSON、人物缺失不中断、空输入与坏 JSON、导出再导入。
+- 文件名约定：`--` / `__` 分隔、序号提取、音频按人物分组排序、异常输入不抛错。
+- 上传池：并发上限、失败隔离、进度回调、中止后统计跳过任务。
+- 模板：内置 5 个舞台、捕获结构不含素材与语音、套用保比例统一高度、可只换舞台不缩放人物。
+- 互动配方：5 种配方的触发者、链式 next、并行动作、缺语音忽略。
+- 动图元素：GIF / WebP / MP4 的 `animated` 标记、schema 白名单、非法 URL 拒绝。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 

@@ -41,7 +41,7 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
   }
 
   const declaredLength = Number(context.request.headers.get("content-length") ?? 0);
-  if (declaredLength > SIZE_LIMITS.audio + 1024 * 1024) {
+  if (declaredLength > SIZE_LIMITS.video + 1024 * 1024) {
     return fail(413, "too_large", "文件太大了");
   }
 
@@ -56,7 +56,8 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
   if (!(file instanceof File)) return fail(400, "missing_file", "没有收到文件");
 
   const kindRaw = String(form.get("kind") ?? "image");
-  const kind = kindRaw === "audio" ? "audio" : kindRaw === "cover" ? "cover" : "image";
+  const kind =
+    kindRaw === "audio" ? "audio" : kindRaw === "video" ? "video" : kindRaw === "cover" ? "cover" : "image";
   const limit = SIZE_LIMITS[kind === "cover" ? "cover" : kind];
   if (file.size <= 0) return fail(400, "empty_file", "文件是空的");
   if (file.size > limit) {
@@ -65,12 +66,24 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
 
   const buffer = new Uint8Array(await file.arrayBuffer());
   const sniffed = sniff(buffer);
-  if (!sniffed) return fail(415, "unsupported_type", "只支持 JPG / PNG / WEBP / GIF / MP3 / WAV / OGG / M4A");
-  if (kind !== "audio" && sniffed.kind !== "image") {
-    return fail(415, "wrong_kind", "这个文件不是图片");
+  if (!sniffed) {
+    return fail(
+      415,
+      "unsupported_type",
+      "只支持 JPG / PNG / WEBP / GIF / MP3 / WAV / OGG / M4A / MP4 / WEBM",
+    );
   }
   if (kind === "audio" && sniffed.kind !== "audio") {
     return fail(415, "wrong_kind", "这个文件不是音频");
+  }
+  if (kind === "video" && sniffed.kind !== "video") {
+    return fail(415, "wrong_kind", "这个文件不是视频");
+  }
+  if (kind === "image" && sniffed.kind !== "image") {
+    return fail(415, "wrong_kind", "这个文件不是图片");
+  }
+  if (kind === "cover" && sniffed.kind !== "image") {
+    return fail(415, "wrong_kind", "封面必须是图片");
   }
 
   try {
@@ -87,9 +100,9 @@ export async function onRequestPost(context: FunctionContext): Promise<Response>
   const id = crypto.randomUUID();
   const key = `meme-stage/${kind}/${id}.${sniffed.ext}`;
   const now = Date.now();
-  const width = kind === "audio" ? null : Math.max(0, Math.min(20000, Number(form.get("width") ?? 0) || 0)) || null;
-  const height = kind === "audio" ? null : Math.max(0, Math.min(20000, Number(form.get("height") ?? 0) || 0)) || null;
-  const duration = kind === "audio" ? Math.max(0, Math.min(3600, Number(form.get("duration") ?? 0) || 0)) || null : null;
+  const width = kind === "audio" || kind === "video" ? null : Math.max(0, Math.min(20000, Number(form.get("width") ?? 0) || 0)) || null;
+  const height = kind === "audio" || kind === "video" ? null : Math.max(0, Math.min(20000, Number(form.get("height") ?? 0) || 0)) || null;
+  const duration = kind === "audio" || kind === "video" ? Math.max(0, Math.min(3600, Number(form.get("duration") ?? 0) || 0)) || null : null;
   const name = String(form.get("name") ?? file.name ?? "素材")
     .replace(/[<>\u0000-\u001f]/g, "")
     .trim()

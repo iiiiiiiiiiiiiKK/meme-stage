@@ -116,6 +116,11 @@ export interface CanvasElement {
     thumbUrl?: string;
     assetId?: string;
     name: string;
+    /**
+     * Animated media is drawn as a static frame in the editor (Konva cannot play
+     * GIFs) and as a DOM overlay on the visitor stage so it actually animates.
+     */
+    animated?: "gif" | "webp" | "mp4";
   };
 }
 
@@ -130,7 +135,78 @@ export type StepType =
   | "flash"
   | "goto";
 
-export type AnimationName = "bounce" | "shake" | "pop" | "spin" | "pulse";
+export type AnimationName =
+  | "bounce"
+  | "shake"
+  | "pop"
+  | "spin"
+  | "pulse"
+  | "nod"
+  | "turn"
+  | "jump"
+  | "zoomIn"
+  | "zoomOut"
+  | "highlight"
+  | "reaction";
+
+/** where an effect sticker (GIF / WebP / MP4) is anchored during a cue */
+export type EffectAnchor = "center" | "top" | "bottom" | "left" | "right" | "top-left" | "top-right";
+
+export interface CueEffect {
+  id: string;
+  /** same-origin asset url */
+  url: string;
+  /** gif / webp / mp4 — the DOM overlay plays it natively */
+  kind: "gif" | "webp" | "mp4";
+  anchor: EffectAnchor;
+  /** rendered width in canvas world pixels */
+  size: number;
+  /** how long the sticker stays, in ms */
+  duration: number;
+  /** start offset relative to the cue start, in ms */
+  delay?: number;
+  loop?: boolean;
+  muted?: boolean;
+}
+
+/** one line of the performance script */
+export interface PerformanceCue {
+  id: string;
+  /** element id of the speaker */
+  actorId: string;
+  /** specific voice clip; omitted = next clip in the actor's rotation */
+  clipId?: string;
+  /** bubble text; omitted = the clip's own line */
+  text?: string;
+  /** ms to wait before this cue starts */
+  waitBefore?: number;
+  /** ms to wait after the audio/bubble finished */
+  waitAfter?: number;
+  animation?: AnimationName;
+  /** dim every other character while this cue plays ("舞台聚光") */
+  spotlight?: boolean;
+  /** show a subtitle bubble (default true) */
+  showBubble?: boolean;
+  /** move the actor by this offset in world pixels */
+  moveX?: number;
+  moveY?: number;
+  /** sticker effects played with this cue */
+  effects?: CueEffect[];
+  /** lip-flap mouth opening while speaking */
+  lipFlap?: boolean;
+  /** ms override for how long the cue blocks (default: audio duration) */
+  holdMs?: number;
+}
+
+export interface Performance {
+  id: string;
+  name: string;
+  cues: PerformanceCue[];
+  /** loop the whole script forever */
+  loop: boolean;
+  /** auto-start after the visitor's first tap */
+  autoPlay?: boolean;
+}
 
 export interface Step {
   id: string;
@@ -168,6 +244,8 @@ export interface ProjectSettings {
   allowRemix: boolean;
   authorName: string;
   soundHint: string;
+  /** show a "开始表演" button on the published page when a performance exists */
+  showPlayButton?: boolean;
 }
 
 export interface ProjectData {
@@ -185,6 +263,8 @@ export interface ProjectData {
   };
   elements: CanvasElement[];
   events: EventDef[];
+  /** scripted performances; the first one is what "开始表演" runs */
+  performances?: Performance[];
   settings: ProjectSettings;
   updatedAt: number;
 }
@@ -206,7 +286,7 @@ export interface ServerProject {
 
 export interface AssetRecord {
   id: string;
-  kind: "image" | "audio" | "cover";
+  kind: "image" | "audio" | "video" | "cover";
   url: string;
   mime: string;
   size: number;

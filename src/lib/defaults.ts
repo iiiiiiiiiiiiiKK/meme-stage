@@ -4,6 +4,8 @@ import type {
   CanvasElement,
   CharacterData,
   EventDef,
+  Performance,
+  PerformanceCue,
   ProjectData,
   Step,
   StepType,
@@ -121,7 +123,7 @@ export function makeBubble(preset: keyof typeof BUBBLE_PRESETS = "comic"): Bubbl
 export const STEP_TYPES: { type: StepType; label: string; hint: string }[] = [
   { type: "playAudio", label: "播放语音", hint: "播放目标人物的语音" },
   { type: "say", label: "说一句话", hint: "显示气泡字幕" },
-  { type: "animate", label: "播放动画", hint: "弹跳 / 抖动 / 放大" },
+  { type: "animate", label: "播放动画", hint: "弹跳 / 抖动 / 点头 / 跳起" },
   { type: "show", label: "显示人物", hint: "让隐藏的人物出现" },
   { type: "hide", label: "隐藏人物", hint: "让目标暂时消失" },
   { type: "move", label: "移动人物", hint: "相对位移，单位像素" },
@@ -130,7 +132,43 @@ export const STEP_TYPES: { type: StepType; label: string; hint: string }[] = [
   { type: "goto", label: "跳转事件", hint: "继续执行另一个事件" },
 ];
 
-export const ANIMATIONS: AnimationName[] = ["bounce", "shake", "pop", "spin", "pulse"];
+export const ANIMATIONS: AnimationName[] = [
+  "bounce",
+  "shake",
+  "pop",
+  "spin",
+  "pulse",
+  "nod",
+  "turn",
+  "jump",
+  "zoomIn",
+  "zoomOut",
+  "highlight",
+  "reaction",
+];
+
+export const ANIMATION_LABELS: Record<AnimationName, string> = {
+  bounce: "弹跳",
+  shake: "抖动",
+  pop: "弹出",
+  spin: "旋转",
+  pulse: "呼吸",
+  nod: "点头",
+  turn: "转身",
+  jump: "跳起",
+  zoomIn: "拉近",
+  zoomOut: "拉远",
+  highlight: "高亮",
+  reaction: "惊讶反应",
+};
+
+export function makePerformance(name = "新表演"): Performance {
+  return { id: uid("pf"), name, cues: [], loop: false, autoPlay: true };
+}
+
+export function makeCue(actorId: string, overrides: Partial<PerformanceCue> = {}): PerformanceCue {
+  return { id: uid("cq"), actorId, waitAfter: 260, showBubble: true, ...overrides };
+}
 
 export function createProject(overrides: Partial<ProjectData> = {}): ProjectData {
   return {
@@ -143,6 +181,7 @@ export function createProject(overrides: Partial<ProjectData> = {}): ProjectData
     background: { type: "color", color: "#101018" },
     elements: [],
     events: [],
+    performances: [],
     settings: {
       audioMode: "single",
       reactions: true,
@@ -150,6 +189,7 @@ export function createProject(overrides: Partial<ProjectData> = {}): ProjectData
       allowRemix: true,
       authorName: "",
       soundHint: "轻点人物，听他们开口",
+      showPlayButton: true,
     },
     updatedAt: Date.now(),
     ...overrides,
@@ -221,6 +261,42 @@ export function createText(args: {
     flipX: false,
     flipY: false,
     text: { content: args.content, style: bubble, duration: bubble.hold },
+  };
+}
+
+export function createMedia(args: {
+  url: string;
+  thumbUrl?: string;
+  assetId?: string;
+  name: string;
+  animated: "gif" | "webp" | "mp4";
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+  z?: number;
+}): CanvasElement {
+  return {
+    id: uid("md"),
+    type: "image",
+    x: args.x ?? 0,
+    y: args.y ?? 0,
+    width: args.width,
+    height: args.height,
+    rotation: 0,
+    z: args.z ?? 10,
+    opacity: 1,
+    locked: false,
+    hidden: false,
+    flipX: false,
+    flipY: false,
+    image: {
+      url: args.url,
+      thumbUrl: args.thumbUrl,
+      assetId: args.assetId,
+      name: args.name,
+      animated: args.animated,
+    },
   };
 }
 
