@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-135%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-150%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -62,6 +62,26 @@
 ---
 
 ## 已实现的功能
+
+### 贴纸工坊（本地抠图）
+
+- **完全在本机**：人物分割、人脸/468 点 FaceMesh、Alpha Mask、描边全部跑在浏览器里，原图和蒙版不上传。
+- **7 种裁切**：只要脸 / 头部 / 头+脖子 / 头+肩 / 上半身 / 去背 / 整个人。
+- **程序化描边**：单层或双层（默认白粗边 + 黑细外线），颜色、粗细、羽化、扩张/收缩都可调；改描边不会重新跑模型。
+- **手动 Mask 修复**：擦除 / 恢复画笔、笔刷大小与硬度、平滑、还原；源图永不被改写。
+- **多主体**：一张合照里检测出多张脸时可以选主体，人脸只用来定位，最终轮廓始终来自真实 Alpha。
+- **保存与导出**：结果存进本机 IndexedDB（IndexedDB 不可用时明确报错），可下载透明 PNG，也可一键作为**独立图层**或**角色**加入 MEME STAGE 画布。
+- **诚实的状态**：颜色蒙版 fallback、蒙版为空、模型加载失败都会显示具体原因，不会把 fallback 当作成功。
+
+### 批量工坊
+
+- **同一套引擎**：批量调用的是和单张完全相同的 processor，不存在第二份抠图代码。
+- **可恢复队列**：每个任务的阶段和结果写进 IndexedDB，刷新页面会恢复上一批任务；崩溃时正在处理的那张会标成 `interrupted` 并可重试。
+- **真实进度**：阶段只会按 decoding → detecting → matting → composing → saving 推进，不显示假百分比。
+- **失败隔离**：一张失败只影响自己，可单独重试；单张有 2 分钟超时保护，避免一张卡死拖住整队。
+- **参数快照**：提交时把裁切模式、描边、输出尺寸写进这一批任务，之后改面板不影响已提交项。
+- **导出**：成功项打包成 ZIP（含 `manifest.json`，失败项另附 `failed.json`），同名文件自动加序号，保留真实透明通道。
+- **加入画布**：多张结果一次导入 Stage，每张都是独立图层，不会合成一张带背景的图片。
 
 ### 剧本演出（小品模式）
 
@@ -300,7 +320,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（135 个，全部通过）
+### 单元测试（150 个，全部通过）
 
 ```bash
 npm test
@@ -324,6 +344,8 @@ npm test
 - 动图元素：GIF / WebP / MP4 的 `animated` 标记、schema 白名单、非法 URL 拒绝。
 - 人物清单：CSV/JSON 解析、未知枚举忽略、按名匹配、比例保持、未匹配上报。
 - 口型位置：长宽比默认值、手标坐标夹取、翻转镜像、旋转跟随、屏幕换算、schema 往返与脏值丢弃。
+- 贴纸蒙版：覆盖率统计、擦除/恢复画笔、软硬笔刷边缘、越界裁剪、形态学膨胀/腐蚀、模糊、交集、收紧、噪点清理。
+- 贴纸领域模型：7 种裁切模式与标签、面向人脸的裁切判定、默认双层描边配置、队列项形状。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 
@@ -331,7 +353,7 @@ npm test
 npm run test:e2e       # Playwright: 桌面 + 手机（Pixel 7 视口）公共页面
 ```
 
-`npm run test:e2e` 在 2026-11-12 的结果：**18 / 18 通过**（桌面 Chrome、Pixel 7 视口、iPhone 13 Safari/WebKit × 首页 / 示例语音 / 发布页 / 多语音轮换 / 气泡锚点 / 404）。
+`npm run test:e2e` 覆盖桌面 Chrome、Pixel 7 视口和 iPhone 13 Safari/WebKit；`--project=desktop` 最近一次为 **10 / 10 通过**（首页 / 示例语音 / 发布页 / 多语音轮换 / 气泡锚点 / 404 / 剧本面板 / 批量面板 / 模板）。
 
 完整创作闭环用下面的脚本复跑：
 
@@ -340,6 +362,28 @@ node scripts/test-editor.mjs https://meme-stage.pages.dev
 node scripts/test-features.mjs https://meme-stage.pages.dev
 node scripts/verify-production.mjs https://meme-stage.pages.dev
 ```
+
+贴纸工坊与批量工坊：
+
+```bash
+node scripts/test-sticker-studio.mjs      # 导入 → 本地识别 → 合成 → 存本机
+node scripts/test-sticker-bridge.mjs      # 贴纸作为独立图层进入 Stage
+node scripts/test-batch-bridge.mjs        # 3 张批量 → 刷新恢复 → ZIP → 加入画布
+node scripts/probe-batch-timing.mjs       # 连续处理多张的耗时与完成情况
+```
+
+2026-11-12 的贴纸链路实测：
+
+| 验证项 | 结果 |
+| --- | --- |
+| 单张导入 → 本地识别 | ✅ 模型从本站 `models/` 加载，识别约 10s（软件渲染） |
+| 识别结果诚实降级 | ✅ 合成图无人脸时显示「颜色蒙版」并给出原因 |
+| 合成 → 保存到本机 | ✅ IndexedDB `variants` 记录 +1，可下载透明 PNG |
+| 贴纸 → Stage 独立图层 | ✅ 0 → 1 个 `image` 元素，URL 为 `/api/files/…`，非动画标记 |
+| 3 张批量处理 | ✅ 3/3 完成，刷新后任务恢复（3 张、1 完成） |
+| 批量 → ZIP | ✅ 按钮在完成后可用，包内含 manifest |
+| 批量 → 加入画布 | ✅ 3 张结果变成 3 个独立 `image` 图层 |
+| 单张超时保护 | ✅ 单项超过 120s 标为可重试失败，不阻塞后续项 |
 
 2026-10-27 的实际结果：
 

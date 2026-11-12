@@ -42,6 +42,7 @@ function TopNav() {
         <nav className="ml-4 hidden items-center gap-4 text-[12px] text-mute sm:flex">
           <a href="#how" className="hover:text-paper">怎么玩</a>
           <a href="#features" className="hover:text-paper">能力</a>
+          <Link to="/studio/sticker" className="hover:text-paper">贴纸工坊</Link>
           <Link to="/p/demo" className="hover:text-paper">示例作品</Link>
           <Link to="/library" className="hover:text-paper">我的作品</Link>
         </nav>
