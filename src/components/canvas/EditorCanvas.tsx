@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Stage, Layer, Rect, Line, Transformer, Image as KonvaImage } from "react-konva";
+import { Stage, Layer, Rect, Line, Transformer, Image as KonvaImage, Group, Ellipse } from "react-konva";
 import Konva from "konva";
 import { useEditor } from "../../store/editor";
 import {
@@ -22,6 +22,7 @@ import {
   type Bounds,
   type Viewport,
 } from "../../lib/geometry";
+import { mouthWorldPoint } from "../../lib/mouth";
 import type { CanvasElement } from "../../lib/types";
 import { ElementNode, type NodeRegistry } from "./ElementNode";
 import { IconButton } from "../ui";
@@ -373,6 +374,16 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>(function EditorCanvas
     });
   };
 
+  /* ------------------------------------------------------- mouth marker guide */
+  // Showing the mouth point while a character is selected makes the Inspector's
+  // picker and the canvas agree, so a wrong anchor is visible before publishing.
+  const mouthMarker = useMemo(() => {
+    if (selection.length !== 1 || exporting) return null;
+    const el = project.elements.find((item) => item.id === selection[0]);
+    if (!el || el.type !== "character" || el.hidden) return null;
+    return mouthWorldPoint(el);
+  }, [selection, project.elements, exporting]);
+
   /* ------------------------------------------------------------- transformer */
   useEffect(() => {
     const tr = transformerRef.current;
@@ -666,6 +677,22 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>(function EditorCanvas
                 stroke="#b6ff3c"
                 strokeWidth={1.5 / viewport.scale}
               />
+            ) : null}
+            {mouthMarker ? (
+              <Group
+                x={mouthMarker.x}
+                y={mouthMarker.y}
+                rotation={mouthMarker.rotation}
+                listening={false}
+              >
+                <Ellipse
+                  radiusX={Math.max(4, mouthMarker.width / 2)}
+                  radiusY={Math.max(3, mouthMarker.height / 2)}
+                  stroke="#b6ff3c"
+                  strokeWidth={1.5 / viewport.scale}
+                  dash={[4 / viewport.scale, 3 / viewport.scale]}
+                />
+              </Group>
             ) : null}
           </Layer>
 

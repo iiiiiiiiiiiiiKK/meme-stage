@@ -68,6 +68,23 @@ export interface BubblePlacement {
   maxWidth: number;
 }
 
+/**
+ * Where a character's mouth sits, as a fraction of the element box (0–1).
+ * `x`/`y` is the mouth centre, `size` is the mouth width relative to the box
+ * width. Defaults are derived from the box when a character has never been
+ * marked, so old projects still flap sensibly.
+ */
+export interface MouthAnchor {
+  /** 0 = left edge, 1 = right edge */
+  x: number;
+  /** 0 = top edge, 1 = bottom edge */
+  y: number;
+  /** mouth width as a fraction of the element width (0.04–0.6) */
+  size: number;
+  /** true when the author placed it by hand, so imports never overwrite it */
+  custom?: boolean;
+}
+
 export interface CharacterData {
   name: string;
   imageUrl: string;
@@ -80,6 +97,8 @@ export interface CharacterData {
   line: string;
   bubble: BubbleStyle;
   bubblePlacement: BubblePlacement;
+  /** lip-flap mouth position; omitted = derived default */
+  mouth?: MouthAnchor;
   effects: {
     outline: number;
     shadow: boolean;

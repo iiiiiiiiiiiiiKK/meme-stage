@@ -18,6 +18,7 @@ import { chooseVoice } from "../../lib/voice";
 import { bubbleAnchorPoint } from "../../lib/bubblePosition";
 import { DEFAULT_BUBBLE_PLACEMENT } from "../../lib/defaults";
 import { fitViewport, frameBounds, worldToScreen, zoomAt, type Viewport } from "../../lib/geometry";
+import { mouthScreenShape } from "../../lib/mouth";
 import { makeBubble } from "../../lib/defaults";
 import { cachedImage, loadImage } from "../../lib/image";
 import { Icon } from "../Icon";
@@ -597,18 +598,14 @@ export function VisitorStage({
     [effects, viewport],
   );
 
-  // lip flap: a simple two-frame mouth over the speaker's head area.
-  // Cheaper and more reliable than per-visor mouth art, and reads well for memes.
+  // lip flap: a two-frame mouth pinned to the speaker's own mouth anchor, so it
+  // lands on the face instead of the forehead for off-centre or full-body art.
   const lipFlapView = useMemo(() => {
     if (!lipFlapId) return null;
     const el = project.elements.find((item) => item.id === lipFlapId);
     if (!el) return null;
     const offset = offsets[el.id] ?? { x: 0, y: 0 };
-    const cx = el.x + offset.x + el.width / 2;
-    const cy = el.y + offset.y + el.height * 0.34;
-    const screen = worldToScreen(viewport, cx, cy);
-    const w = Math.max(12, el.width * 0.16 * viewport.scale);
-    return { x: screen.x, y: screen.y, w, h: w * 0.55 };
+    return mouthScreenShape(el, viewport, offset);
   }, [lipFlapId, project.elements, offsets, viewport]);
 
   const hasVoices = project.elements.some((el) => (el.character?.voices.length ?? 0) > 0);
@@ -751,11 +748,11 @@ export function VisitorStage({
           className="pointer-events-none absolute z-20 rounded-full bg-ink/85"
           data-testid="lip-flap"
           style={{
-            left: lipFlapView.x,
-            top: lipFlapView.y,
-            width: lipFlapView.w,
-            height: lipFlapView.h,
-            transform: "translate(-50%, -50%)",
+            left: lipFlapView.cx,
+            top: lipFlapView.cy,
+            width: lipFlapView.width,
+            height: lipFlapView.height,
+            transform: `translate(-50%, -50%) rotate(${lipFlapView.rotation}deg)`,
             animation: "lip-flap 0.24s steps(2, end) infinite",
           }}
         />

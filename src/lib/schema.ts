@@ -176,6 +176,16 @@ function element(raw: unknown, index: number): CanvasElement {
     if (Array.isArray(c.voices)) {
       for (const raw of c.voices) pushVoice(raw);
     }
+    const mouthRaw = (c.mouth ?? null) as Record<string, unknown> | null;
+    const mouth =
+      mouthRaw && typeof mouthRaw === "object" && typeof mouthRaw.x === "number" && typeof mouthRaw.y === "number"
+        ? {
+            x: num(mouthRaw.x, 0.5, 0.02, 0.98),
+            y: num(mouthRaw.y, 0.4, 0.02, 0.98),
+            size: num(mouthRaw.size, 0.16, 0.04, 0.6),
+            ...(mouthRaw.custom === true ? { custom: true } : {}),
+          }
+        : undefined;
     el.character = {
       name: str(c.name, LIMITS.name, `人物 ${index + 1}`),
       imageUrl,
@@ -189,6 +199,7 @@ function element(raw: unknown, index: number): CanvasElement {
         offsetY: num(placementRaw.offsetY, 0, -5000, 5000),
         maxWidth: num(placementRaw.maxWidth, 300, 140, 640),
       },
+      ...(mouth ? { mouth } : {}),
       effects: {
         outline: num(effects.outline, 0, 0, 12),
         shadow: bool(effects.shadow, true),

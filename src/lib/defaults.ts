@@ -4,6 +4,7 @@ import type {
   CanvasElement,
   CharacterData,
   EventDef,
+  MouthAnchor,
   Performance,
   PerformanceCue,
   ProjectData,
@@ -161,6 +162,45 @@ export const ANIMATION_LABELS: Record<AnimationName, string> = {
   highlight: "高亮",
   reaction: "惊讶反应",
 };
+
+/**
+ * Default mouth placement for a character that has not been marked by hand.
+ *
+ * The old constant ratio (0.34 of the height) is exactly why mouths landed on
+ * foreheads: it assumes a face fills the whole box, which is wrong for full-body
+ * pictures and off-centre crops. Square-ish and portrait crops read better with
+ * the mouth a little lower, landscape memes with it higher, so the default is
+ * derived from the aspect ratio and then clamped to a safe band.
+ */
+export function defaultMouth(width = 320, height = 420): MouthAnchor {
+  const aspect = width > 0 && height > 0 ? width / height : 0.76;
+  // narrow/tall full-body shots keep the face high; wide close-ups keep it high too
+  const ratio = aspect > 1.15 ? 0.3 : aspect > 0.9 ? 0.36 : 0.42;
+  return {
+    x: 0.5,
+    y: clamp01(ratio),
+    size: aspect > 1.15 ? 0.2 : 0.16,
+  };
+}
+
+const clamp01 = (value: number) => Math.min(0.98, Math.max(0.02, value));
+
+/** the mouth to draw for a character, falling back to the aspect-based default */
+export function mouthOf(
+  character: Pick<CharacterData, "mouth"> | undefined,
+  width: number,
+  height: number,
+): MouthAnchor {
+  const fallback = defaultMouth(width, height);
+  const mouth = character?.mouth;
+  if (!mouth) return fallback;
+  return {
+    x: Number.isFinite(mouth.x) ? Math.min(0.98, Math.max(0.02, mouth.x)) : fallback.x,
+    y: Number.isFinite(mouth.y) ? Math.min(0.98, Math.max(0.02, mouth.y)) : fallback.y,
+    size: Number.isFinite(mouth.size) ? Math.min(0.6, Math.max(0.04, mouth.size)) : fallback.size,
+    custom: mouth.custom,
+  };
+}
 
 export function makePerformance(name = "新表演"): Performance {
   return { id: uid("pf"), name, cues: [], loop: false, autoPlay: true };

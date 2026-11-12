@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-127%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-135%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -69,7 +69,7 @@
 - **底部剧本时间线**：每行可选人物、语音、台词、动作、停顿、聚光、口型；行可上下移动、删除；播放时当前行高亮，能看到正在说哪一句。
 - **动作库扩充**：弹跳、抖动、弹出、旋转、呼吸、点头、转身、跳起、拉近、拉远、高亮、惊讶反应。
 - **聚光**：说话的人保持原亮度，其他人自动变暗，舞台感更强。
-- **口型开合**：说话时在人物头部叠一个两帧嘴部动画，适合 Meme 风格。
+- **口型开合**：说话时在人物嘴部叠一个两帧动画。每张图可以点一下照片直接标嘴的位置（人物面板里的「口型位置」），旋转和左右翻转都会跟着走；没标过的图按长宽比自动估一个位置。
 - **特效贴纸**：每行可挂 GIF / WebP / MP4，按位置（头顶 / 脚下 / 左右 / 四角）、大小、时长播放，MP4 静音自动播放。
 - **动图元素**：素材面板可上传 GIF / 动图 WebP / 短 MP4，作为独立元素放到画布；编辑器显示首帧，访客页用 DOM 层真实播放动画，支持旋转、翻转、透明度和聚光变暗。
 - **剧本导入导出**：CSV（`order,actor,line,audio,action,waitAfter,spotlight`）或 JSON，按人物名匹配、按音频名匹配；也能导出成 CSV 再改。
@@ -300,7 +300,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（127 个，全部通过）
+### 单元测试（135 个，全部通过）
 
 ```bash
 npm test
@@ -323,6 +323,7 @@ npm test
 - 互动配方：5 种配方的触发者、链式 next、并行动作、缺语音忽略。
 - 动图元素：GIF / WebP / MP4 的 `animated` 标记、schema 白名单、非法 URL 拒绝。
 - 人物清单：CSV/JSON 解析、未知枚举忽略、按名匹配、比例保持、未匹配上报。
+- 口型位置：长宽比默认值、手标坐标夹取、翻转镜像、旋转跟随、屏幕换算、schema 往返与脏值丢弃。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）
 

@@ -25,7 +25,7 @@ import { audioEngine } from "../../lib/audio";
 import { api } from "../../lib/api";
 import { estimateTextHeight } from "../canvas/ElementNode";
 import { canvasPresetFor } from "../../lib/export";
-import { DEFAULT_BUBBLE_PLACEMENT, createText } from "../../lib/defaults";
+import { DEFAULT_BUBBLE_PLACEMENT, createText, mouthOf } from "../../lib/defaults";
 import { AZURE_STYLE_LABELS, AZURE_VOICES, findAzureVoice } from "../../lib/azureVoices";
 import {
   estimateSpeechSeconds,
@@ -1002,6 +1002,17 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         </p>
       </Section>
 
+      <Section title="口型位置">
+        <MouthPicker
+          character={character}
+          width={el.width}
+          height={el.height}
+          onChange={(mouth, key) =>
+            updateCharacter(el.id, (c) => void (c.mouth = mouth), true, `mouth:${el.id}:${key}`)
+          }
+        />
+      </Section>
+
       <Section title="气泡样式" defaultOpen={false}>
         <BubbleStyleEditor
           style={character.bubble}
@@ -1155,6 +1166,119 @@ function CharacterInspector({ el }: { el: CanvasElement }) {
         />
       ) : null}
     </PanelShell>
+  );
+}
+
+function MouthPicker({
+  character,
+  width,
+  height,
+  onChange,
+}: {
+  character: NonNullable<CanvasElement["character"]>;
+  width: number;
+  height: number;
+  onChange: (mouth: NonNullable<CanvasElement["character"]>["mouth"], key: string) => void;
+}) {
+  const mouth = mouthOf(character, width, height);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const image = character.thumbUrl || character.imageUrl;
+
+  const placeAt = (event: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const box = boxRef.current;
+    if (!box) return;
+    const rect = box.getBoundingClientRect();
+    const x = Math.min(0.98, Math.max(0.02, (event.clientX - rect.left) / rect.width));
+    const y = Math.min(0.98, Math.max(0.02, (event.clientY - rect.top) / rect.height));
+    if (!commit && event.type === "pointermove" && event.buttons !== 1) return;
+    onChange({ ...mouth, x, y, custom: true }, commit ? "xy" : "xy-drag");
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] leading-relaxed text-mute">
+        说话时嘴部动画贴在这里。默认位置按图片比例估算，头在画面上面的人会偏高 —— 直接点一下照片里的嘴就能校准。
+      </p>
+      <div
+        ref={boxRef}
+        role="button"
+        tabIndex={0}
+        aria-label="点击设置嘴部位置"
+        data-testid="mouth-picker"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          placeAt(event, true);
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons === 1) placeAt(event, false);
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+          placeAt(event, true);
+        }}
+        className="relative cursor-crosshair overflow-hidden rounded-lg border border-line bg-ink-3 checker select-none"
+        style={{ aspectRatio: `${Math.max(1, width)} / ${Math.max(1, height)}`, maxHeight: 220 }}
+      >
+        <img
+          src={image}
+          alt=""
+          draggable={false}
+          className="pointer-events-none h-full w-full object-contain"
+        />
+        <span
+          className="pointer-events-none absolute rounded-full border-2 border-neon bg-neon/30"
+          style={{
+            left: `${mouth.x * 100}%`,
+            top: `${mouth.y * 100}%`,
+            width: `${Math.max(6, mouth.size * 100)}%`,
+            aspectRatio: "1 / 0.55",
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+        {/* crosshair guides help when the photo is mostly one flat colour */}
+        <span
+          className="pointer-events-none absolute inset-y-0 w-px bg-neon/25"
+          style={{ left: `${mouth.x * 100}%` }}
+        />
+        <span
+          className="pointer-events-none absolute inset-x-0 h-px bg-neon/25"
+          style={{ top: `${mouth.y * 100}%` }}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="嘴部宽度" hint={`${Math.round(mouth.size * 100)}%`}>
+          <Slider
+            value={mouth.size}
+            min={0.04}
+            max={0.6}
+            step={0.01}
+            label={`${Math.round(mouth.size * 100)}`}
+            onChange={(size) => onChange({ ...mouth, size, custom: true }, "size")}
+          />
+        </Field>
+        <Field label="垂直位置" hint={`${Math.round(mouth.y * 100)}%`}>
+          <Slider
+            value={mouth.y}
+            min={0.02}
+            max={0.98}
+            step={0.01}
+            label={`${Math.round(mouth.y * 100)}`}
+            onChange={(y) => onChange({ ...mouth, y, custom: true }, "y")}
+          />
+        </Field>
+      </div>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="w-full"
+        icon="undo"
+        onClick={() => onChange(undefined, "reset")}
+      >
+        恢复自动估算
+      </Button>
+    </div>
   );
 }
 
