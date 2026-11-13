@@ -7,6 +7,8 @@ export interface Env {
   AI: Ai;
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION?: string;
+  /** imgbb API key used by /api/host; never exposed to the browser. */
+  IMGBB_KEY?: string;
   ENVIRONMENT?: string;
 }
 

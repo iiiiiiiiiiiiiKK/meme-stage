@@ -4,7 +4,11 @@ import {
   AiKeyError,
   ALLOWED_SIZES,
   KNOWN_MODELS,
+  clearStoredBase,
   clearStoredKey,
+  normalizeBase,
+  readStoredBase,
+  saveStoredBase,
   downloadGenerated,
   generateImage,
   probeKey,
@@ -53,6 +57,51 @@ describe("api key storage", () => {
     saveStoredKey("sk-abcdefghijklmnop");
     clearStoredKey();
     expect(readStoredKey()).toBeNull();
+  });
+});
+
+describe("OpenAI-compatible endpoint", () => {
+  it("normalises pasted base URLs and keeps a host root", () => {
+    expect(normalizeBase("https://api.openai.com/v1")).toBe("https://api.openai.com");
+    expect(normalizeBase("https://api.openai.com/v1/")).toBe("https://api.openai.com");
+    expect(normalizeBase("  https://proxy.example.com/openai/v1 ")).toBe("https://proxy.example.com/openai");
+    expect(normalizeBase("not a url")).toBeNull();
+    expect(normalizeBase("ftp://example.com")).toBeNull();
+  });
+
+  it("falls back to the built-in gateway and clears back to it", () => {
+    installStorage();
+    expect(readStoredBase()).toBe(AI_BASE_URL);
+    expect(saveStoredBase("https://api.openai.com/v1")).toBe("https://api.openai.com");
+    expect(readStoredBase()).toBe("https://api.openai.com");
+    clearStoredBase();
+    expect(readStoredBase()).toBe(AI_BASE_URL);
+    expect(saveStoredBase("nope")).toBeNull();
+  });
+
+  it("queries /v1/models on the configured host", async () => {
+    installStorage();
+    saveStoredBase("https://api.openai.com/v1");
+    let seen = "";
+    vi.stubGlobal("fetch", async (url: string) => {
+      seen = String(url);
+      return jsonResponse({ data: [{ id: "gpt-image-1" }] });
+    });
+    const result = await probeKey("sk-test-key-123456");
+    expect(seen).toBe("https://api.openai.com/v1/models");
+    expect(result.models).toEqual(["gpt-image-1"]);
+    clearStoredBase();
+  });
+
+  it("accepts b64_json results from OpenAI image endpoints", async () => {
+    installStorage();
+    saveStoredBase("https://api.openai.com/v1");
+    vi.stubGlobal("fetch", async () =>
+      jsonResponse({ data: [{ b64_json: "aGVsbG8=" }] }),
+    );
+    const result = await generateImage({ key: "sk-test-key-123456", prompt: "a cat sticker" });
+    expect(result.sourceUrl).toBe("data:image/png;base64,aGVsbG8=");
+    clearStoredBase();
   });
 });
 

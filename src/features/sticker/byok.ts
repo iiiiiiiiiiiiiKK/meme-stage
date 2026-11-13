@@ -14,7 +14,62 @@
  *  - the returned CDN image is CORS-open too (`*`), so it can be read into a Blob
  */
 
+/**
+ * Any OpenAI-compatible endpoint works: paste `https://api.openai.com/v1` and your
+ * own key, or point at the hosted gateway below. The base lives in localStorage next
+ * to the key, so switching providers never requires a redeploy.
+ */
 export const AI_BASE_URL = "https://agent3.shyfai.cn";
+
+export const BASE_STORAGE = "ms.ai.base";
+
+/** Strip trailing slashes and a trailing `/v1` so paths can be appended safely. */
+export function normalizeBase(input: string): string | null {
+  const trimmed = input.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  const clean = trimmed.replace(/\/v1$/i, "");
+  return clean;
+}
+
+export function readStoredBase(): string {
+  try {
+    const raw = localStorage.getItem(BASE_STORAGE);
+    return (raw && normalizeBase(raw)) || AI_BASE_URL;
+  } catch {
+    return AI_BASE_URL;
+  }
+}
+
+export function saveStoredBase(value: string): string | null {
+  const clean = normalizeBase(value);
+  if (!clean) return null;
+  try {
+    localStorage.setItem(BASE_STORAGE, clean);
+  } catch {
+    return null;
+  }
+  return clean;
+}
+
+export function clearStoredBase(): void {
+  try {
+    localStorage.removeItem(BASE_STORAGE);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Root without a trailing `/v1`; call sites append `/v1/...` themselves. */
+function apiRoot(): string {
+  return readStoredBase();
+}
 
 /** Models the gateway advertises; the list is refreshed from `/v1/models` when set. */
 export const KNOWN_MODELS = ["gpt-image-2.5", "gpt-image-2.6"] as const;
@@ -106,7 +161,7 @@ function authHeaders(key: string): Record<string, string> {
 export async function probeKey(key: string): Promise<{ models: string[] }> {
   let response: Response;
   try {
-    response = await fetch(`${AI_BASE_URL}/v1/models`, {
+    response = await fetch(`${apiRoot()}/v1/models`, {
       headers: { authorization: `Bearer ${key}` },
     });
   } catch {
@@ -144,7 +199,7 @@ async function postJson(path: string, key: string, body: unknown, idempotencyKey
 }> {
   let response: Response;
   try {
-    response = await fetch(`${AI_BASE_URL}${path}`, {
+    response = await fetch(`${apiRoot()}${path}`, {
       method: "POST",
       headers: { ...authHeaders(key), "idempotency-key": idempotencyKey },
       body: JSON.stringify(body),
@@ -165,7 +220,14 @@ async function postJson(path: string, key: string, body: unknown, idempotencyKey
     // 401 here also means the key is wrong/expired, not a server fault.
     throw new AiKeyError(response.status === 401 ? 401 : 502, code, message);
   }
-  const url = payload.data?.find((item) => typeof item.url === "string")?.url;
+  /**
+   * OpenAI's official image endpoints answer with `b64_json` (and only add a URL for
+   * some models), so accept both shapes instead of assuming a CDN link.
+   */
+  const first = payload.data?.[0];
+  const remote = typeof first?.url === "string" ? first.url : null;
+  const inline = typeof first?.b64_json === "string" && first.b64_json.length > 0 ? first.b64_json : null;
+  const url = remote ?? (inline ? `data:image/png;base64,${inline}` : null);
   if (!url) throw new AiKeyError(502, "no_image", "图像服务没有返回图片");
   return {
     requestId: payload.request_id ?? null,
@@ -243,10 +305,32 @@ export async function restyleImage(input: {
   input.onProgress?.("正在上传参考图…");
   const dataUrl = await blobToDataUrl(input.file);
   const model = input.model || KNOWN_MODELS[0];
-  const size = ALLOWED_SIZES.includes((input.size ?? "") as (typeof ALLOWED_SIZES)[number])
-    ? input.size
+  const size: string = ALLOWED_SIZES.includes((input.size ?? "") as (typeof ALLOWED_SIZES)[number])
+    ? (input.size ?? "1024x1024")
     : "1024x1024";
   input.onProgress?.("正在重绘，通常 20–40 秒…");
+  const idempotencyKey = `ms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  /**
+   * OpenAI's official `/v1/images/edits` takes multipart form data, while the
+   * gateway takes JSON with an inline data URL. Pick the shape from the configured
+   * host so both providers work without a rebuild.
+   */
+  const openAiShaped = !/shyfai/i.test(apiRoot());
+
+  if (openAiShaped) {
+    const form = new FormData();
+    const filename = input.file instanceof File ? input.file.name : "reference.png";
+    form.append("image", input.file, filename);
+    form.append("prompt", prompt.slice(0, 1000));
+    form.append("model", model);
+    form.append("n", "1");
+    form.append("size", size ?? "1024x1024");
+    if (input.background) form.append("background", input.background);
+    const multipart = await postMultipart("/v1/images/edits", input.key, form, idempotencyKey);
+    return { requestId: multipart.requestId, usage: multipart.usage, sourceUrl: multipart.sourceUrl };
+  }
+
   const result = await postJson(
     "/v1/images/edits",
     input.key,
@@ -258,9 +342,88 @@ export async function restyleImage(input: {
       size,
       ...(input.background ? { background: input.background } : {}),
     },
-    `ms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    idempotencyKey,
   );
   return { requestId: result.requestId, usage: result.usage, sourceUrl: result.sourceUrl };
+}
+
+/** Multipart variant used by OpenAI-shaped edit endpoints. */
+async function postMultipart(
+  path: string,
+  key: string,
+  form: FormData,
+  idempotencyKey: string,
+): Promise<{ requestId: string | null; usage: AiUsage | null; sourceUrl: string }> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiRoot()}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "idempotency-key": idempotencyKey },
+      body: form,
+    });
+  } catch {
+    throw new AiKeyError(0, "network", "请求图像服务失败，可能是网络或跨域被拦截");
+  }
+  const text = await response.text();
+  let payload: ProviderPayload = {};
+  try {
+    payload = text ? (JSON.parse(text) as ProviderPayload) : {};
+  } catch {
+    throw new AiKeyError(502, "bad_json", "图像服务返回了无法解析的内容");
+  }
+  if (!response.ok) {
+    throw new AiKeyError(
+      response.status === 401 ? 401 : 502,
+      payload.error?.code ?? "provider_error",
+      payload.error?.message ?? `图像服务返回 ${response.status}`,
+    );
+  }
+  const first = payload.data?.[0];
+  const sourceUrl =
+    (typeof first?.url === "string" ? first.url : null) ??
+    (typeof first?.b64_json === "string" ? `data:image/png;base64,${first.b64_json}` : null);
+  if (!sourceUrl) throw new AiKeyError(502, "no_image", "图像服务没有返回图片");
+  return { requestId: payload.request_id ?? null, usage: payload.usage ?? null, sourceUrl };
+}
+
+/**
+ * Upload a finished image to the imgbb host and get a permanent link back.
+ *
+ * Goes through our own Pages Function so the host key stays server-side and the
+ * browser never needs imgbb's CORS-friendly credentials.
+ */
+export async function hostImage(blob: Blob): Promise<{
+  url: string;
+  displayUrl: string;
+  thumbUrl: string;
+  deleteUrl: string;
+  id: string;
+}> {
+  const dataUrl = await blobToDataUrl(blob);
+  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  let response: Response;
+  try {
+    response = await fetch("/api/host", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ image: base64 }),
+    });
+  } catch {
+    throw new AiKeyError(0, "network", "无法连接图床服务");
+  }
+  const payload = (await response.json().catch(() => null)) as
+    | { url?: string; displayUrl?: string; thumbUrl?: string; deleteUrl?: string; id?: string; error?: string; message?: string }
+    | null;
+  if (!response.ok || !payload?.url) {
+    throw new AiKeyError(502, payload?.error ?? "host_failed", payload?.message ?? "图床返回失败");
+  }
+  return {
+    url: payload.url,
+    displayUrl: payload.displayUrl ?? payload.url,
+    thumbUrl: payload.thumbUrl ?? payload.url,
+    deleteUrl: payload.deleteUrl ?? "",
+    id: payload.id ?? "",
+  };
 }
 
 /** Read the CORS-open result URL into bytes. */

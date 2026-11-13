@@ -14,6 +14,7 @@ export function AiKeyPanel({ compact = false }: { compact?: boolean }) {
   const ai = useAiKey();
   const hydrate = useAiKeyStore((s) => s.hydrate);
   const [draft, setDraft] = useState("");
+  const [baseDraft, setBaseDraft] = useState(ai.base);
   const [reveal, setReveal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(!ai.key);
@@ -126,6 +127,36 @@ export function AiKeyPanel({ compact = false }: { compact?: boolean }) {
               </Button>
             </div>
           </Field>
+
+          <Field label="接口地址" hint="OpenAI 兼容">
+            <div className="flex gap-1">
+              <TextInput
+                value={baseDraft}
+                onChange={(e) => setBaseDraft(e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-7 flex-1 font-mono text-[10.5px]"
+                aria-label="图像接口地址"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={saving || !baseDraft.trim()}
+                onClick={async () => {
+                  setSaving(true);
+                  const ok = await ai.setBase(baseDraft);
+                  setSaving(false);
+                  toast(ok ? "接口地址已保存，重新验证密钥" : "地址格式不对", ok ? "success" : "error");
+                }}
+              >
+                保存
+              </Button>
+            </div>
+          </Field>
+          <p className="text-[9px] leading-relaxed text-mute">
+            默认是站内网关；换成 <code>https://api.openai.com/v1</code> 或任意 OpenAI 兼容服务（含自建代理）都可以，密钥跟着地址一起存在本机。
+          </p>
 
           {ai.probing ? (
             <div className="flex items-center gap-1 text-[9px] text-mute">

@@ -11,7 +11,7 @@ import { Button, Field, Select, Spinner, TextArea, toast } from "../../component
 import { Icon } from "../../components/Icon";
 import { AiKeyPanel } from "./AiKeyPanel";
 import { aiReady, useAiKey, useAiKeyStore } from "./useAiKey";
-import { downloadGenerated, generateImage, usageSummary } from "./byok";
+import { downloadGenerated, generateImage, hostImage, usageSummary } from "./byok";
 import { decodeToCanvas } from "./engine/image";
 import { putSource, putMask, putVariant } from "./repository";
 import { thumbnail } from "./processor";
@@ -59,6 +59,8 @@ export function AiGeneratePanel({ onSaved }: { onSaved: (variant: StickerVariant
   const [usage, setUsage] = useState<string | null>(null);
   const [lastBlob, setLastBlob] = useState<Blob | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [hostUrl, setHostUrl] = useState<string | null>(null);
+  const [hosting, setHosting] = useState(false);
 
   // Object URLs must be revoked or a long session leaks every preview.
   useEffect(() => {
@@ -102,6 +104,24 @@ export function AiGeneratePanel({ onSaved }: { onSaved: (variant: StickerVariant
       setBusy(false);
     }
   }, [ai.key, ai.model, custom, preset, transparent]);
+
+  /**
+   * Park the finished image on the imgbb host instead of in this app's storage.
+   * Useful when the sticker is only needed as a link (or to keep R2/D1 small).
+   */
+  const hostNow = useCallback(async () => {
+    if (!lastBlob) return;
+    setHosting(true);
+    try {
+      const hosted = await hostImage(lastBlob);
+      setHostUrl(hosted.url);
+      toast("已上传图床，链接可直接使用", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "上传图床失败", "error");
+    } finally {
+      setHosting(false);
+    }
+  }, [lastBlob]);
 
   const saveLocally = useCallback(async () => {
     if (!lastBlob) return;
@@ -257,6 +277,36 @@ export function AiGeneratePanel({ onSaved }: { onSaved: (variant: StickerVariant
                 >
                   保存到本机素材
                 </Button>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon="upload"
+                    className="flex-1"
+                    disabled={hosting || busy}
+                    onClick={() => void hostNow()}
+                  >
+                    {hosting ? <Spinner size={10} /> : null}
+                    传到图床
+                  </Button>
+                </div>
+                {hostUrl ? (
+                  <div className="space-y-0.5 rounded border border-line/60 bg-ink-2 px-1.5 py-1 text-[9px]">
+                    <a href={hostUrl} target="_blank" rel="noreferrer" className="block break-all text-neon underline">
+                      {hostUrl}
+                    </a>
+                    <button
+                      type="button"
+                      className="text-mute hover:text-paper"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(hostUrl).catch(() => undefined);
+                        toast("链接已复制", "info");
+                      }}
+                    >
+                      复制链接
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>

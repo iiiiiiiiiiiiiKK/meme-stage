@@ -10,7 +10,7 @@ import { Button, Field, Select, Spinner, TextArea, toast } from "../../component
 import { Icon } from "../../components/Icon";
 import { AiKeyPanel } from "./AiKeyPanel";
 import { aiReady, useAiKey, useAiKeyStore } from "./useAiKey";
-import { downloadGenerated, restyleImage, usageSummary } from "./byok";
+import { downloadGenerated, hostImage, restyleImage, usageSummary } from "./byok";
 
 const STYLE_PRESETS: { id: string; label: string; prompt: string }[] = [
   {
@@ -69,6 +69,9 @@ export function AiStylePanel({
   const [lastUsage, setLastUsage] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [transparent, setTransparent] = useState(false);
+  const [lastBlob, setLastBlob] = useState<Blob | null>(null);
+  const [hostUrl, setHostUrl] = useState<string | null>(null);
+  const [hosting, setHosting] = useState(false);
 
   // A restyle consumes the confirmation, so a second run cannot piggyback on it.
   useEffect(() => {
@@ -107,6 +110,8 @@ export function AiStylePanel({
       setStep("正在下载结果…");
       const blob = await downloadGenerated(result.sourceUrl);
       setLastUsage(usageSummary(result.usage));
+      setLastBlob(blob);
+      setHostUrl(null);
       toast("风格版已生成", "success");
       onResult(blob, `${variantName.slice(0, 24)} · AI`);
     } catch (error) {
@@ -220,6 +225,50 @@ export function AiStylePanel({
 
             {step ? <div className="text-[9px] text-mute">{step}</div> : null}
             {lastUsage ? <div className="text-[9px] text-mute">用量：{lastUsage}</div> : null}
+
+            {lastBlob ? (
+              <div className="space-y-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon="upload"
+                  className="w-full"
+                  disabled={hosting || busy}
+                  onClick={async () => {
+                    setHosting(true);
+                    try {
+                      const hosted = await hostImage(lastBlob);
+                      setHostUrl(hosted.url);
+                      toast("已上传图床，链接可直接分享", "success");
+                    } catch (error) {
+                      toast(error instanceof Error ? error.message : "上传图床失败", "error");
+                    } finally {
+                      setHosting(false);
+                    }
+                  }}
+                >
+                  {hosting ? <Spinner size={10} /> : null}
+                  传到图床（不占服务器存储）
+                </Button>
+                {hostUrl ? (
+                  <div className="space-y-0.5 rounded border border-line/60 bg-ink-2 px-1.5 py-1 text-[9px]">
+                    <a href={hostUrl} target="_blank" rel="noreferrer" className="block break-all text-neon underline">
+                      {hostUrl}
+                    </a>
+                    <button
+                      type="button"
+                      className="text-mute hover:text-paper"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(hostUrl).catch(() => undefined);
+                        toast("链接已复制", "info");
+                      }}
+                    >
+                      复制链接
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {busy ? (
               <div className="text-[9px] leading-relaxed text-mute">
                 典型耗时 20–40 秒，期间请不要关闭页面。

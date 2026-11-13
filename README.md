@@ -145,6 +145,8 @@
 - **风格化从不重试**：重试若丢掉 `images` 会返回一张与用户贴纸无关的图，却仍被当成风格版，所以宁可让用户看到明确失败。
 - **发布仍走同源素材**：生成的图片在加入作品时经 `/api/assets` 上传，与其他素材共用 8MB 上限和 600 条配额，发布页访问的始终是 `/api/files/:id`，不依赖会过期的 CDN 链接。
 - **CSP 只放行必要来源**：`connect-src` / `img-src` 额外允许 `agent3.shyfai.cn` 与 `*.fycsai.com`，其余仍是 `'self'`。
+- **任意 OpenAI 兼容接口**：面板里除了密钥，还有「接口地址」。默认是站内网关，填 `https://api.openai.com/v1`（或自建代理 / 中转）即可换供应商；地址会归一化（去掉尾部 `/v1`），验证时请求该地址的 `/v1/models`，生图走 `/v1/images/generations`，风格化在有 `/v1/images/edits` 的服务上走 multipart（OpenAI 官方形状），网关则继续用内联 JSON。两个形状都接受 `url` 或 `b64_json` 返回。
+- **图床卸载（可选）**：生成结果可以「传到图床」，拿到永久链接后只存链接、不占 R2/D1 存储。上传经同源 `POST /api/host` 中转，imgbb 的 key 只在 Pages 环境变量里（`IMGBB_KEY`），浏览器拿不到；单张上限 8MB，按 IP 限 12 次/分钟。图床失败不影响本地保存，错误会直说（例如 key 被禁用的 `imgbb 103`）。
 
 ### 剧本演出（小品模式）
 
@@ -283,6 +285,7 @@ npm run deploy
 | `D1_DATABASE_ID` | `wrangler.jsonc` 中的 D1 id |
 | `R2_BUCKET_NAME` | 素材桶 |
 | `SEED_EDITOR_KEY` | 可选，官方示例的归属 key |
+| `IMGBB_KEY` | 可选，图床上传（`/api/host`）用的 imgbb API key；未配置时接口返回 503 并说明原因 |
 
 > 真实的 token、密钥、R2 凭据**没有**写进仓库，也不应该写进来。
 

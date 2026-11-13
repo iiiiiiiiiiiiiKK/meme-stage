@@ -14,10 +14,16 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${AI_CDN}`,
+  // Generated images can come back from any OpenAI-compatible host the user picked,
+  // so image loading has to accept https rather than a fixed allow-list.
+  `img-src 'self' data: blob: https: ${AI_CDN}`,
   "media-src 'self' blob:",
   "font-src 'self' data:",
-  `connect-src 'self' ${AI_GATEWAY} ${AI_CDN}`,
+  // BYOK: the visitor's browser talks to whatever OpenAI-compatible endpoint they
+  // configured (api.openai.com, a proxy, a self-hosted gateway). Restricting to a
+  // fixed host list would make that setting unusable, so https is allowed here while
+  // every other directive stays same-origin.
+  `connect-src 'self' https: ${AI_GATEWAY} ${AI_CDN}`,
   "worker-src 'self' blob:",
   "frame-ancestors 'self'",
   "base-uri 'self'",

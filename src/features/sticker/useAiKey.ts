@@ -9,16 +9,21 @@ import { create } from "zustand";
 import {
   KNOWN_MODELS,
   AiKeyError,
+  clearStoredBase,
   clearStoredKey,
   probeKey,
+  readStoredBase,
   readStoredKey,
   readStoredModel,
+  saveStoredBase,
   saveStoredKey,
   saveStoredModel,
 } from "./byok";
 
 interface AiKeyStore {
   key: string | null;
+  /** OpenAI-compatible endpoint the key belongs to. */
+  base: string;
   models: string[];
   model: string;
   verified: boolean | null;
@@ -26,6 +31,7 @@ interface AiKeyStore {
   error: string | null;
   retryable: boolean;
   save: (value: string) => Promise<boolean>;
+  setBase: (value: string) => Promise<boolean>;
   forget: () => void;
   setModel: (value: string) => void;
   retry: () => void;
@@ -37,6 +43,7 @@ let hydrated = false;
 
 export const useAiKeyStore = create<AiKeyStore>((set, get) => ({
   key: readStoredKey(),
+  base: readStoredBase(),
   models: [],
   model: readStoredModel() ?? KNOWN_MODELS[0],
   verified: null,
@@ -83,9 +90,22 @@ export const useAiKeyStore = create<AiKeyStore>((set, get) => ({
     }
   },
 
+  setBase: async (value) => {
+    const clean = saveStoredBase(value);
+    if (!clean) {
+      set({ error: "接口地址需要是完整的 http(s) 链接，例如 https://api.openai.com/v1" });
+      return false;
+    }
+    set({ base: clean, models: [], verified: null, error: null });
+    const stored = get().key;
+    if (stored) await get().save(stored);
+    return true;
+  },
+
   forget: () => {
     clearStoredKey();
-    set({ key: null, models: [], verified: null, error: null, retryable: false, probing: false });
+    clearStoredBase();
+    set({ key: null, base: readStoredBase(), models: [], verified: null, error: null, retryable: false, probing: false });
   },
 
   setModel: (value) => {
@@ -104,6 +124,7 @@ export function useAiKey() {
   const store = useAiKeyStore();
   return {
     key: store.key,
+    base: store.base,
     models: store.models,
     model: store.model,
     verified: store.verified,
@@ -111,6 +132,7 @@ export function useAiKey() {
     error: store.error,
     retryable: store.retryable,
     setKey: store.save,
+    setBase: store.setBase,
     forget: store.forget,
     setModel: store.setModel,
     retry: store.retry,
