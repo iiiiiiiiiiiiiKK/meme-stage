@@ -42,7 +42,7 @@ function TopNav() {
         <nav className="ml-4 hidden items-center gap-4 text-[12px] text-mute sm:flex">
           <a href="#how" className="hover:text-paper">怎么玩</a>
           <a href="#features" className="hover:text-paper">能力</a>
-          <Link to="/studio/sticker" className="hover:text-paper">贴纸工坊</Link>
+          <Link to="/sticker" className="hover:text-paper">STICKER</Link>
           <Link to="/p/demo" className="hover:text-paper">示例作品</Link>
           <Link to="/library" className="hover:text-paper">我的作品</Link>
         </nav>
@@ -50,12 +50,12 @@ function TopNav() {
           {/* The nav above is hidden below `sm`, which left phones with no route
               into the sticker studio at all. Keep one compact entry there. */}
           <Link
-            to="/studio/sticker"
+            to="/sticker"
             className="flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-[11px] text-mute transition-colors hover:border-paper/40 hover:text-paper sm:hidden"
             aria-label="贴纸工坊"
           >
             <Icon name="sparkles" size={13} />
-            贴纸工坊
+            STICKER
           </Link>
           <a
             href={X_URL}
@@ -124,9 +124,9 @@ function Hero() {
                 先玩示例
               </Button>
             </Link>
-            <Link to="/studio/sticker">
+            <Link to="/sticker">
               <Button variant="outline" size="lg" icon="sparkles">
-                做个贴纸
+                做贴纸 STICKER
               </Button>
             </Link>
             <span className="hidden items-center gap-1.5 text-[11px] text-mute sm:flex">
@@ -390,8 +390,8 @@ function Footer() {
         </div>
         <div className="grid grid-cols-2 gap-x-10 gap-y-2 text-[11px] text-mute sm:grid-cols-3">
           <Link to="/editor" className="hover:text-paper">开始创作</Link>
-          <Link to="/studio/sticker" className="hover:text-paper">贴纸工坊</Link>
-          <Link to="/studio/batch" className="hover:text-paper">批量工坊</Link>
+          <Link to="/sticker" className="hover:text-paper">STICKER</Link>
+          <Link to="/sticker/batch" className="hover:text-paper">STICKER 批量</Link>
           <Link to="/assets" className="hover:text-paper">素材库</Link>
           <Link to="/library" className="hover:text-paper">我的作品</Link>
           <Link to="/p/demo" className="hover:text-paper">示例作品</Link>

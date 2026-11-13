@@ -85,6 +85,69 @@ export interface CutoutOptions {
   outline: OutlineSettings;
 }
 
+/**
+ * Colour treatment applied to the subject's own pixels.
+ *
+ * Deliberately not part of the AI path: these are local canvas operations, so
+ * changing them never costs a request and never redraws the person.
+ */
+export type PersonColor = "original" | "grayscale" | "mono" | "duotone" | "halftone" | "custom";
+
+export const PERSON_COLORS: { id: PersonColor; label: string; hint: string }[] = [
+  { id: "original", label: "原图彩色", hint: "保留原图颜色（默认）" },
+  { id: "grayscale", label: "灰度", hint: "去饱和，保留明暗层次" },
+  { id: "mono", label: "黑白", hint: "硬边二值，经典 meme 感" },
+  { id: "duotone", label: "双色调", hint: "阴影染色 + 高光留白" },
+  { id: "halftone", label: "漫画网点", hint: "按亮度生成圆点，印刷质感" },
+  { id: "custom", label: "自定义染色", hint: "用你选的颜色轻微罩染" },
+];
+
+export const PERSON_COLOR_LABEL: Record<PersonColor, string> = {
+  original: "原图彩色",
+  grayscale: "灰度",
+  mono: "黑白",
+  duotone: "双色调",
+  halftone: "漫画网点",
+  custom: "自定义染色",
+};
+
+/** Stroke presets, expressed at the 200px face reference scale. */
+export const OUTLINE_PRESETS: { id: string; label: string; patch: Partial<OutlineSettings> }[] = [
+  { id: "none", label: "无描边", patch: { enabled: false } },
+  {
+    id: "thin",
+    label: "细",
+    patch: { enabled: true, thickness: 8, layers: 1, secondThickness: 0 },
+  },
+  {
+    id: "medium",
+    label: "中等",
+    patch: { enabled: true, thickness: 14, color: "#ffffff", layers: 1, secondThickness: 0 },
+  },
+  {
+    id: "thick",
+    label: "粗",
+    patch: { enabled: true, thickness: 22, color: "#ffffff", layers: 1, secondThickness: 0 },
+  },
+  {
+    id: "ultra",
+    label: "超粗",
+    patch: { enabled: true, thickness: 32, color: "#ffffff", layers: 1, secondThickness: 0 },
+  },
+  {
+    id: "classic",
+    label: "白粗 + 黑细（默认）",
+    patch: {
+      enabled: true,
+      thickness: 14,
+      color: "#ffffff",
+      layers: 2,
+      secondColor: "#111111",
+      secondThickness: 6,
+    },
+  },
+];
+
 /** A detected face plus its landmark mesh, in source-pixel coordinates. */
 export interface FaceDetection {
   index: number;
@@ -201,6 +264,9 @@ export interface BatchJob {
     outline: OutlineSettings;
     maxSide: number;
     format: "png" | "webp";
+    /** local colour treatment, applied before masking */
+    personColor?: PersonColor;
+    colorTint?: string;
   };
   concurrency: number;
   items: BatchItem[];

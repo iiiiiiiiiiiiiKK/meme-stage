@@ -39,17 +39,20 @@ import {
   putVariant,
   storageUsage,
 } from "./repository";
-import { importStickers } from "./bridge";
+import { importStickers, pushVariantToAssets } from "./bridge";
 import { AiStylePanel } from "./AiStylePanel";
 import { AiGeneratePanel } from "./AiGeneratePanel";
 import {
   CUT_MODES,
   DEFAULT_OUTLINE,
   MODE_LABEL,
+  OUTLINE_PRESETS,
+  PERSON_COLORS,
   type CutMode,
   type FaceDetection,
   type MaskRecord,
   type OutlineSettings,
+  type PersonColor,
   type StickerSource,
   type StickerVariant,
 } from "./types";
@@ -101,6 +104,9 @@ export function StickerStudio() {
   const [edgeSmooth] = useState(DEFAULT_CUT_OPTIONS.edgeSmooth);
   const [outline, setOutline] = useState<OutlineSettings>({ ...DEFAULT_OUTLINE });
   const [maxSide, setMaxSide] = useState(1200);
+  // Local colour treatment. Changing these re-runs only the compositor.
+  const [personColor, setPersonColor] = useState<PersonColor>("original");
+  const [colorTint, setColorTint] = useState("#ff4d6d");
 
   const [preview, setPreview] = useState<PreviewTab>("result");
   const [result, setResult] = useState<{ canvas: HTMLCanvasElement; warnings: string[] } | null>(null);
@@ -110,6 +116,7 @@ export function StickerStudio() {
   const [manualAlpha, setManualAlpha] = useState<Uint8ClampedArray | null>(null);
   const [usage, setUsage] = useState<{ usage: number; quota: number }>({ usage: 0, quota: 0 });
   const [dragging, setDragging] = useState(false);
+  const [pushing, setPushing] = useState(false);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
@@ -175,8 +182,17 @@ export function StickerStudio() {
         setManualAlpha(null);
         setResult(null);
         setMasks([]);
+        // Colour and stroke choices are per-photo decisions; a new import starts
+        // from the defaults instead of inheriting the previous image's settings.
+        setPersonColor("original");
         await refresh();
         toast(`已导入 ${file.name}（${canvas.width}×${canvas.height}）`, "success");
+        /**
+         * STICKER promises "import a photo → get a sticker". Running the local
+         * pipeline immediately is what makes that true; the user still gets the
+         * result panel and can re-run with different settings.
+         */
+        void runAnalysisFor(canvas, source);
       } catch (error) {
         toast(error instanceof Error ? error.message : "读取失败", "error");
       } finally {
@@ -184,6 +200,8 @@ export function StickerStudio() {
         setProgress(null);
       }
     },
+    // `runAnalysisFor` is stable (it only reads args), so this stays cheap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [refresh],
   );
 
@@ -211,41 +229,55 @@ export function StickerStudio() {
 
   /* -------------------------------------------------------------- analysis */
 
+  /**
+   * Analyse an explicit canvas + source pair.
+   *
+   * Taking the arguments (rather than reading state) lets the import path start the
+   * pipeline immediately: `setCanvasSource` has not re-rendered yet at that point, so
+   * a state-reading version would analyse the previous image.
+   */
+  const runAnalysisFor = useCallback(
+    async (canvas: HTMLCanvasElement, source: StickerSource) => {
+      setAnalyze((prev) => ({ ...prev, status: "running", message: "本地识别中…", percent: 5 }));
+      try {
+        const outcome = await analyzeImage(canvas, (event) =>
+          setAnalyze((prev) => ({ ...prev, message: event.message, percent: event.percent })),
+        );
+        const mask = await putMask({
+          sourceId: source.id,
+          width: canvas.width,
+          height: canvas.height,
+          algorithm: outcome.matteSource,
+          alpha: outcome.alpha,
+          coverage: outcome.matteCoverage,
+        }).catch(() => null);
+        setAnalyze({
+          status: "ready",
+          message: `识别完成 · ${Math.round(outcome.elapsedMs)}ms · 蒙版覆盖 ${Math.round(outcome.matteCoverage * 100)}%`,
+          percent: 100,
+          faces: outcome.faces,
+          alpha: outcome.alpha,
+          maskId: mask?.id ?? null,
+          matteCoverage: outcome.matteCoverage,
+          matteSource: outcome.matteSource,
+          warnings: outcome.warnings,
+        });
+        setMasks(await listMasks(source.id));
+      } catch (error) {
+        setAnalyze((prev) => ({
+          ...prev,
+          status: "error",
+          message: error instanceof Error ? error.message : "识别失败",
+        }));
+      }
+    },
+    [],
+  );
+
   const runAnalysis = useCallback(async () => {
     if (!canvasSource || !activeSource) return;
-    setAnalyze((prev) => ({ ...prev, status: "running", message: "本地识别中…", percent: 5 }));
-    try {
-      const outcome = await analyzeImage(canvasSource, (event) =>
-        setAnalyze((prev) => ({ ...prev, message: event.message, percent: event.percent })),
-      );
-      const mask = await putMask({
-        sourceId: activeSource.id,
-        width: canvasSource.width,
-        height: canvasSource.height,
-        algorithm: outcome.matteSource,
-        alpha: outcome.alpha,
-        coverage: outcome.matteCoverage,
-      }).catch(() => null);
-      setAnalyze({
-        status: "ready",
-        message: `识别完成 · ${Math.round(outcome.elapsedMs)}ms · 蒙版覆盖 ${Math.round(outcome.matteCoverage * 100)}%`,
-        percent: 100,
-        faces: outcome.faces,
-        alpha: outcome.alpha,
-        maskId: mask?.id ?? null,
-        matteCoverage: outcome.matteCoverage,
-        matteSource: outcome.matteSource,
-        warnings: outcome.warnings,
-      });
-      setMasks(await listMasks(activeSource.id));
-    } catch (error) {
-      setAnalyze((prev) => ({
-        ...prev,
-        status: "error",
-        message: error instanceof Error ? error.message : "识别失败",
-      }));
-    }
-  }, [activeSource, canvasSource]);
+    await runAnalysisFor(canvasSource, activeSource);
+  }, [activeSource, canvasSource, runAnalysisFor]);
 
   /* ------------------------------------------------------------- composing */
 
@@ -262,12 +294,14 @@ export function StickerStudio() {
         feather,
         expand,
         edgeSmooth,
+        personColor,
+        colorTint,
       });
       setResult({ canvas: outcome.canvas, warnings: outcome.warnings });
     } catch (error) {
       toast(error instanceof Error ? error.message : "合成失败", "error");
     }
-  }, [analyze.faces, canvasSource, effectiveAlpha, edgeSmooth, expand, faceIndex, feather, mode, outline]);
+  }, [analyze.faces, canvasSource, colorTint, effectiveAlpha, edgeSmooth, expand, faceIndex, feather, mode, outline, personColor]);
 
   useEffect(() => {
     void recompute();
@@ -384,6 +418,50 @@ export function StickerStudio() {
     }
   }, [activeSource, analyze.maskId, manualAlpha, mode, outline, refresh, result, maxSide]);
 
+  /**
+   * Finish the STICKER flow: render → save locally → upload into the MEME STAGE
+   * asset library.
+   *
+   * Kept as one action on purpose. Asking the user to "save" and then separately
+   * "upload" invites a half-finished state where the sticker exists locally but can
+   * never be found from the library.
+   */
+  const pushToLibrary = useCallback(async () => {
+    if (!result || !activeSource || !analyze.maskId) {
+      toast("先生成蒙版再存入素材库", "info");
+      return;
+    }
+    setPushing(true);
+    try {
+      const finalCanvas = limitSize(result.canvas, maxSide);
+      const { blob, mime } = await encode(finalCanvas, "png");
+      const thumb = await thumbnail(finalCanvas, 320);
+      const variant = await putVariant({
+        sourceId: activeSource.id,
+        maskId: analyze.maskId,
+        kind: manualAlpha ? "manual-mask" : "local-cutout",
+        name: `${activeSource.name.replace(/\.[^.]+$/, "")} · ${MODE_LABEL[mode]}`,
+        width: finalCanvas.width,
+        height: finalCanvas.height,
+        mime,
+        outline,
+        mode,
+        warnings: result.warnings,
+        blob,
+        thumb,
+      });
+      const pushed = await pushVariantToAssets(variant);
+      await refresh();
+      toast(`已存入素材库：${variant.name}`, "success");
+      // The library is where the result is supposed to land, so show it.
+      navigate(`/assets?focus=${pushed.assetId}`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "存入素材库失败", "error");
+    } finally {
+      setPushing(false);
+    }
+  }, [activeSource, analyze.maskId, manualAlpha, maxSide, mode, navigate, outline, refresh, result]);
+
   const download = useCallback(async () => {
     if (!result || !activeSource) return;
     const finalCanvas = limitSize(result.canvas, maxSide);
@@ -458,6 +536,34 @@ export function StickerStudio() {
 
   const sourceList = useMemo(() => sources.slice(0, 40), [sources]);
 
+  /**
+   * Paste an image straight from the clipboard.
+   *
+   * Bound at the window level so it works without focusing a specific element, which
+   * is how screenshot tools behave: copy, switch tab, press Cmd/Ctrl+V.
+   */
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind !== "file") continue;
+        const file = item.getAsFile();
+        if (!file || !file.type.startsWith("image/")) continue;
+        event.preventDefault();
+        const named =
+          file.name && file.name !== "image.png"
+            ? file
+            : new File([file], `paste-${Date.now()}.png`, { type: file.type || "image/png" });
+        void loadFile(named);
+        return;
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [loadFile]);
+
+
   return (
     <div className="flex h-full min-h-0 bg-ink text-paper">
       {/* sources */}
@@ -503,7 +609,7 @@ export function StickerStudio() {
           ) : null}
           {sourceList.length === 0 ? (
             <p className="px-1 py-6 text-center text-[10px] leading-relaxed text-mute">
-              拖入图片、点 + 导入，
+              拖入图片、粘贴剪贴板、点 + 导入，
               <br />
               或在右侧画布导入贴纸。
             </p>
@@ -653,6 +759,17 @@ export function StickerStudio() {
           <Button size="sm" variant="outline" icon="download" disabled={!result} onClick={() => void download()}>
             下载 PNG
           </Button>
+          {/* The last step of the advertised flow: finished sticker → cloud library. */}
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="upload"
+            disabled={!result || pushing}
+            onClick={() => void pushToLibrary()}
+          >
+            {pushing ? <Spinner size={11} /> : null}
+            存入素材库
+          </Button>
           <div className="ml-auto flex items-center gap-1.5">
             <Button
               size="sm"
@@ -776,6 +893,47 @@ export function StickerStudio() {
                 />
               </div>
             ) : null}
+          </div>
+        </Field>
+
+        <Field label="人物颜色">
+          <div className="grid grid-cols-3 gap-1">
+            {PERSON_COLORS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                title={item.hint}
+                onClick={() => setPersonColor(item.id)}
+                className={cn(
+                  "rounded border px-1 py-1 text-[9.5px]",
+                  personColor === item.id
+                    ? "border-neon/60 bg-neon/15 text-neon"
+                    : "border-line text-mute hover:text-paper",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          {personColor === "duotone" || personColor === "custom" ? (
+            <div className="mt-1 flex items-center gap-1.5">
+              <ColorInput label="染色" value={colorTint} onChange={setColorTint} />
+            </div>
+          ) : null}
+        </Field>
+
+        <Field label="描边预设">
+          <div className="grid grid-cols-2 gap-1">
+            {OUTLINE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setOutline((o) => ({ ...o, ...preset.patch }))}
+                className="rounded border border-line px-1 py-1 text-[9.5px] text-mute hover:border-neon/50 hover:text-paper"
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
         </Field>
 

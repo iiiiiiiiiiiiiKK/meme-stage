@@ -15,8 +15,9 @@ import {
   removeSpecks,
 } from "./engine/mask";
 import { canvasToBlob, createCanvas, ctx2d, makeThumbnail } from "./engine/image";
-import { DEFAULT_OUTLINE, type CutMode, type FaceDetection, type OutlineSettings } from "./types";
+import { DEFAULT_OUTLINE, type CutMode, type FaceDetection, type OutlineSettings, type PersonColor } from "./types";
 import { alphaCoverage, growMask, paintMask, smoothMask } from "./maskOps";
+import { applyPersonColor } from "./engine/filters";
 export { alphaCoverage, growMask, paintMask, smoothMask };
 
 export interface ProcessProgress {
@@ -50,6 +51,10 @@ export interface ComposeInput {
   feather?: number;
   expand?: number;
   edgeSmooth?: number;
+  /** local colour treatment; never calls a model */
+  personColor?: PersonColor;
+  colorTint?: string;
+  halftoneSize?: number;
 }
 
 export interface ComposeOutcome {
@@ -116,7 +121,13 @@ export async function analyze(
   };
 }
 
-/** Run the cutout + stroke renderer. Pure pixel work, no model calls. */
+/**
+ * Run the cutout + stroke renderer. Pure pixel work, no model calls.
+ *
+ * Colour treatment happens *before* masking so only the surviving subject is
+ * affected: the outline and the alpha edge are computed from the same geometry
+ * either way, and switching a filter never re-runs detection.
+ */
 export function compose(input: ComposeInput): ComposeOutcome {
   const warnings: string[] = [];
   let alpha = input.personAlpha;
@@ -126,8 +137,16 @@ export function compose(input: ComposeInput): ComposeOutcome {
     alpha = removeSpecks(alpha, input.source.width, input.source.height, 24);
   }
 
+  const source =
+    input.personColor && input.personColor !== "original"
+      ? applyPersonColor(input.source, input.personColor, {
+          customTint: input.colorTint,
+          halftoneSize: input.halftoneSize,
+        })
+      : input.source;
+
   const result: CutoutResult = runCutout({
-    source: input.source,
+    source,
     personAlpha: alpha,
     faces: input.faces,
     options: {

@@ -15,7 +15,18 @@ import type { CanvasElement } from "../../lib/types";
 import { getVariantBlob, markVariantCloud } from "./repository";
 import type { StickerImportInput, StickerImportResult, StickerVariant } from "./types";
 
-/** Upload one variant to R2 and return the ids needed by the canvas. */
+/**
+ * Upload a sticker into the MEME STAGE asset library without touching the canvas.
+ *
+ * This is the "import the finished sticker" step of the STICKER flow: the bytes end
+ * up in R2 as a normal asset, so it shows up in `/assets` and any project can pick
+ * it later. Nothing is added to the current project implicitly.
+ */
+export async function pushVariantToAssets(
+  variant: StickerVariant,
+): Promise<{ variant: StickerVariant; assetId: string; url: string }> {
+  return uploadVariant(variant);
+}
 async function uploadVariant(
   variant: StickerVariant,
 ): Promise<{ variant: StickerVariant; assetId: string; url: string }> {

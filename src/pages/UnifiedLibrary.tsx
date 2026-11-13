@@ -7,7 +7,7 @@
  * different promises and the UI must not blur them.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, EmptyState, Select, Spinner, cn, toast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { useAssets } from "../store/assets";
@@ -52,6 +52,9 @@ type Row = LocalRow | CloudRow;
 
 export function UnifiedLibrary() {
   const navigate = useNavigate();
+  // STICKER sends the user here right after an upload; highlight what just landed.
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("focus");
   const projectId = useEditor((s) => s.projectId);
   const cloudAssets = useAssets((s) => s.items);
   const loadCloud = useAssets((s) => s.load);
@@ -254,7 +257,7 @@ export function UnifiedLibrary() {
           </Link>
           <span className="text-[12px] text-mute">素材库</span>
           <div className="ml-auto flex items-center gap-1.5">
-            <Link to="/studio/sticker">
+            <Link to="/sticker">
               <Button size="sm" variant="secondary" icon="image">
                 贴纸工坊
               </Button>
@@ -345,7 +348,7 @@ export function UnifiedLibrary() {
               title="这里还没有素材"
               description="去贴纸工坊导入一张图片，抠出第一张贴纸；加入作品后它会同时出现在云端。"
               action={
-                <Link to="/studio/sticker">
+                <Link to="/sticker">
                   <Button size="sm" variant="primary" icon="image">
                     打开贴纸工坊
                   </Button>
@@ -362,7 +365,7 @@ export function UnifiedLibrary() {
                     key={key}
                     className={cn(
                       "overflow-hidden rounded-lg border bg-ink-2",
-                      active ? "border-neon/70" : "border-line",
+                      active ? "border-neon/70" : row.id === focusId ? "border-electric/80 ring-1 ring-electric/40" : "border-line",
                     )}
                   >
                     <button
@@ -431,7 +434,7 @@ export function UnifiedLibrary() {
                           </button>
                         ) : (
                           <Link
-                            to="/studio/sticker"
+                            to="/sticker"
                             className="rounded border border-line px-1 py-0.5 text-[9px] text-mute hover:text-paper"
                           >
                             打开工坊

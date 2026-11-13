@@ -7,7 +7,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-b6ff3c?style=flat-square&labelColor=07070a)
 ![Cloudflare Pages](https://img.shields.io/badge/deploy-Cloudflare%20Pages-4d7cff?style=flat-square&labelColor=07070a)
-![Tests](https://img.shields.io/badge/unit%20tests-165%20passing-b6ff3c?style=flat-square&labelColor=07070a)
+![Tests](https://img.shields.io/badge/unit%20tests-173%20passing-b6ff3c?style=flat-square&labelColor=07070a)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&labelColor=07070a)
 
 ---
@@ -82,6 +82,19 @@
 - **参数快照**：提交时把裁切模式、描边、输出尺寸写进这一批任务，之后改面板不影响已提交项。
 - **导出**：成功项打包成 ZIP（含 `manifest.json`，失败项另附 `failed.json`），同名文件自动加序号，保留真实透明通道。
 - **加入画布**：多张结果一次导入 Stage，每张都是独立图层，不会合成一张带背景的图片。
+
+### STICKER（独立的贴纸生产入口）
+
+顶栏菜单里的 **STICKER** 是一个独立功能（`/sticker`），不在编辑器里面套着一层 tab：
+
+- **一条直线流程**：拖入 / 粘贴 / 点选一张图 → 导入后**立即自动跑本地识别** → 出结果 → 「存入素材库」，落在 MEME STAGE 的 `/assets` 里，并从库里高亮出来。
+- **两个子页面**：`/sticker` 单张制作、`/sticker/batch` 批量制作（共用同一套抠图/描边引擎，没有第二份实现）。
+- **本地优先**：分割、抠图、描边、颜色处理全部在浏览器里完成，不上传原图、不排队、不产生费用。
+- **人物颜色**：原图彩色（默认）/ 灰度 / 黑白 / 双色调 / 漫画网点 / 自定义染色。切换只重跑合成，不重新识别。
+- **描边预设**：无 / 细 / 中 / 粗 / 超粗 / 白粗+黑细（默认）。只改覆盖层参数，不动人物本体。
+- **剪贴板导入**：截图工具里复制后直接 `Ctrl/Cmd + V`。
+- **自动识别的理由**：既然产品承诺「导入即得贴纸」，导入后不该再让用户找一次「开始处理」按钮。
+- **AI 是可选项**：默认完全不用生成式 AI；想风格化时用自己填的密钥（见下一节），失败不影响已抠好的图。
 
 ### AI 生图与风格化（自带密钥，服务端不持钥）
 
@@ -333,7 +346,7 @@ ProjectData {
 
 ## 测试
 
-### 单元测试（165 个，全部通过）
+### 单元测试（173 个，全部通过）
 
 ```bash
 npm test
@@ -359,6 +372,7 @@ npm test
 - 口型位置：长宽比默认值、手标坐标夹取、翻转镜像、旋转跟随、屏幕换算、schema 往返与脏值丢弃。
 - 贴纸蒙版：覆盖率统计、擦除/恢复画笔、软硬笔刷边缘、越界裁剪、形态学膨胀/腐蚀、模糊、交集、收紧、噪点清理。
 - 贴纸领域模型：7 种裁切模式与标签、面向人脸的裁切判定、默认双层描边配置、队列项形状。
+- 描边预设与人物颜色：无/细/中/粗/超粗/双层默认、六种颜色模式（默认原图彩色）、默认预设与内置描边配置一致、预设只改覆盖层字段。
 - 自带密钥（BYOK）：密钥校验与本地存取、拒绝残缺密钥、`/v1/models` 直连探测、401 与网络故障区分、直连生图请求体、透明背景超时后去掉该参数重试且幂等键不变、401 不重试、尺寸兜底、风格化内联参考图、风格化绝不重试、结果下载与 8MB 上限。
 
 ### 端到端（真实 Cloudflare Pages 生产环境）

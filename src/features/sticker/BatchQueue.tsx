@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, EmptyState, Field, IconButton, Select, Slider, Spinner, Switch, toast } from "../../components/ui";
+import { Button, EmptyState, Field, IconButton, Select, Slider, Spinner, Switch, cn, toast } from "../../components/ui";
 import { Icon } from "../../components/Icon";
 import {
   analyze as analyzeImage,
@@ -32,11 +32,13 @@ import {
 import { importStickers } from "./bridge";
 import {
   CUT_MODES,
+  PERSON_COLORS,
   DEFAULT_OUTLINE,
   type BatchItem,
   type BatchJob,
   type CutMode,
   type OutlineSettings,
+  type PersonColor,
   type StickerVariant,
 } from "./types";
 
@@ -80,6 +82,7 @@ export function BatchQueue() {
   const [maxSide, setMaxSide] = useState(1200);
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
   const [autoSave, setAutoSave] = useState(true);
+  const [personColor, setPersonColor] = useState<PersonColor>("original");
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<string>("");
   const [importing, setImporting] = useState(false);
@@ -132,6 +135,7 @@ export function BatchQueue() {
       setOutline(recovered.settings.outline);
       setMaxSide(recovered.settings.maxSide);
       setConcurrency(recovered.concurrency);
+      setPersonColor(recovered.settings.personColor ?? "original");
     })();
     return () => {
       alive = false;
@@ -148,7 +152,7 @@ export function BatchQueue() {
         toast("没有可处理的图片", "info");
         return;
       }
-      const settings: BatchJob["settings"] = { mode, outline, maxSide, format: "png" };
+      const settings: BatchJob["settings"] = { mode, outline, maxSide, format: "png", personColor };
       const base = jobRef.current ?? emptyJob(settings);
       const items: BatchItem[] = [];
       for (const file of images) {
@@ -190,7 +194,7 @@ export function BatchQueue() {
       await persist({ ...base, settings, items: [...base.items, ...items] });
       toast(`已加入 ${items.length} 张`, "success");
     },
-    [maxSide, mode, outline, persist],
+    [maxSide, mode, outline, persist, personColor],
   );
 
   /* ------------------------------------------------------------- processing */
@@ -258,6 +262,8 @@ export function BatchQueue() {
           feather: 0.6,
           expand: 0,
           edgeSmooth: 0.4,
+          personColor: current.settings.personColor,
+          colorTint: current.settings.colorTint,
         });
 
         update({ stage: "saving", progress: 88 });
@@ -646,6 +652,26 @@ export function BatchQueue() {
                 label={String(outline.thickness)}
                 onChange={(thickness) => setOutline((o) => ({ ...o, thickness }))}
               />
+            </Field>
+            <Field label="人物颜色">
+              <div className="grid grid-cols-3 gap-1">
+                {PERSON_COLORS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    title={item.hint}
+                    onClick={() => setPersonColor(item.id)}
+                    className={cn(
+                      "rounded border px-1 py-1 text-[9px]",
+                      personColor === item.id
+                        ? "border-neon/60 bg-neon/15 text-neon"
+                        : "border-line text-mute hover:text-paper",
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </Field>
             <Field label="输出长边" hint={`${maxSide}px`}>
               <Slider value={maxSide} min={400} max={2000} step={100} label={String(maxSide)} onChange={setMaxSide} />

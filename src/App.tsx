@@ -45,6 +45,9 @@ export function App() {
         <Route path="/p/:slug" element={<PublishedPage />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/assets" element={<UnifiedLibrary />} />
+        {/* STICKER is its own product surface, not an editor tab. */}
+        <Route path="/sticker/*" element={<StudioPage />} />
+        {/* Old links keep working; the workshop moved out of /studio. */}
         <Route path="/studio/*" element={<StudioPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
