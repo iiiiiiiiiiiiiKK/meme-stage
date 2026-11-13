@@ -30,6 +30,7 @@ import {
   putVariant,
 } from "./repository";
 import { importStickers } from "./bridge";
+import { BatchAiPanel } from "./BatchAiPanel";
 import {
   CUT_MODES,
   PERSON_COLORS,
@@ -86,6 +87,7 @@ export function BatchQueue() {
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<string>("");
   const [importing, setImporting] = useState(false);
+  const [doneVariants, setDoneVariants] = useState<StickerVariant[]>([]);
 
   const pauseRef = useRef(false);
   const cancelRef = useRef(false);
@@ -110,6 +112,32 @@ export function BatchQueue() {
     const list = await listBatches();
     setHistory(list);
   }, []);
+
+  /**
+   * Materialise the finished variants of the current job so the AI panel can work
+   * on exactly this batch rather than the whole library.
+   */
+  const refreshVariants = useCallback(async () => {
+    const current = jobRef.current;
+    if (!current) {
+      setDoneVariants([]);
+      return;
+    }
+    const all = await listAllVariants();
+    const byId = new Map(all.map((variant) => [variant.id, variant]));
+    const picked: StickerVariant[] = [];
+    for (const item of current.items) {
+      for (const id of item.variantIds) {
+        const variant = byId.get(id);
+        if (variant) picked.push(variant);
+      }
+    }
+    setDoneVariants(picked);
+  }, []);
+
+  useEffect(() => {
+    void refreshVariants();
+  }, [job, refreshVariants]);
 
   // Restore the most recent job on mount. Without this a reload silently threw
   // away a half-finished fifty-image queue, which is exactly what the plan says
@@ -687,6 +715,12 @@ export function BatchQueue() {
               />
             </Field>
             <Switch checked={autoSave} onChange={setAutoSave} label="完成后保存到本机素材" />
+            <div className="mt-2 border-t border-line pt-2">
+              <BatchAiPanel
+                variants={doneVariants}
+                onDone={() => void refreshVariants()}
+              />
+            </div>
             <p className="mt-1 text-[9px] leading-relaxed text-mute">
               参数会作为快照写进这一批任务；之后改这里不会影响已经提交的项。
             </p>

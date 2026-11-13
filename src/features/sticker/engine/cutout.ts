@@ -97,21 +97,62 @@ export function buildCutMask(
     };
   }
 
-  const box = { x: face.box[0], y: face.box[1], width: face.box[2], height: face.box[3] };
-  const region = buildHeadRegionMask(width, height, face.oval, box, mode);
+  /** Silhouette for exactly one face, isolated to that face's person. */
+  const maskForFace = (faceIndex: number): { mask: Uint8ClampedArray; region: Uint8ClampedArray } | null => {
+    const target = faces[faceIndex];
+    if (!target) return null;
+    const ownBox = { x: target.box[0], y: target.box[1], width: target.box[2], height: target.box[3] };
+    const ownRegion = buildHeadRegionMask(width, height, target.oval, ownBox, mode);
+    let own = multiplyMasks(personAlpha, ownRegion);
+    const ownSeed = target.oval.length > 4 ? ovalBounds(target.oval) : null;
+    const seedX = ownSeed ? ownSeed.centerX : target.box[0] + target.box[2] / 2;
+    const seedY = ownSeed ? ownSeed.bottom - ownSeed.height * 0.25 : target.box[1] + target.box[3] * 0.6;
+    const component = selectComponent(own, width, height, seedX, seedY, 40);
+    if (component.found) own = component.mask;
+    return { mask: own, region: ownRegion };
+  };
 
-  // Region 鈭?real person silhouette.
-  let mask = multiplyMasks(personAlpha, region);
+  /**
+   * Multiple subjects in one sticker.
+   *
+   * Each face gets its own isolated silhouette (same code path as a single-subject
+   * cut, so a group photo cannot leak a neighbour), then the silhouettes are unioned.
+   * Only the requested faces contribute; unselected people are excluded.
+   */
+  const requested = options.faceIndices?.filter((index) => index >= 0 && index < faces.length) ?? [];
+  if (requested.length > 1) {
+    let union: Uint8ClampedArray | null = null;
+    let unionRegion: Uint8ClampedArray | null = null;
+    let used = 0;
+    for (const index of requested) {
+      const piece = maskForFace(index);
+      if (!piece) continue;
+      used += 1;
+      if (!union) {
+        union = piece.mask.slice();
+        unionRegion = piece.region.slice();
+        continue;
+      }
+      for (let i = 0; i < union.length; i++) {
+        if (piece.mask[i]! > union[i]!) union[i] = piece.mask[i]!;
+        if (piece.region[i]! > unionRegion![i]!) unionRegion![i] = piece.region[i]!;
+      }
+    }
+    if (union && used > 0) {
+      return {
+        mask: union,
+        faceBox: face.box,
+        warning: used < requested.length ? `只找到 ${used} 个可选主体，其余已跳过。` : null,
+        region: unionRegion,
+      };
+    }
+  }
 
-  // Keep only the person that owns the chosen face, so a group photo does not
-  // leak the other people into the sticker.
-  const seed = face.oval.length > 4 ? ovalBounds(face.oval) : null;
-  const seedX = seed ? seed.centerX : face.box[0] + face.box[2] / 2;
-  const seedY = seed ? seed.bottom - seed.height * 0.25 : face.box[1] + face.box[3] * 0.6;
-  const component = selectComponent(mask, width, height, seedX, seedY, 40);
-  if (component.found) mask = component.mask;
-
-  return { mask, faceBox: face.box, warning: null, region };
+  const single = maskForFace(options.faceIndex) ?? maskForFace(0);
+  if (!single) {
+    return { mask: personAlpha.slice(), faceBox: face.box, warning: null, region: null };
+  }
+  return { mask: single.mask, faceBox: face.box, warning: null, region: single.region };
 }
 
 export interface RunCutoutExtra {

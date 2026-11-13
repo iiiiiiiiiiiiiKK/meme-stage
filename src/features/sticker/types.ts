@@ -48,9 +48,12 @@ export interface OutlineSettings {
   enabled: boolean;
   thickness: number;
   color: string;
-  layers: 1 | 2;
+  layers: 1 | 2 | 3;
   secondColor: string;
   secondThickness: number;
+  /** 第三层（最外层）描边，仅在 layers === 3 时使用 */
+  thirdColor: string;
+  thirdThickness: number;
   shadow: boolean;
   shadowColor: string;
   shadowBlur: number;
@@ -67,6 +70,8 @@ export const DEFAULT_OUTLINE: OutlineSettings = {
   layers: 2,
   secondColor: "#111111",
   secondThickness: 6,
+  thirdColor: "#ffffff",
+  thirdThickness: 0,
   shadow: false,
   shadowColor: "#000000",
   shadowBlur: 18,
@@ -79,6 +84,8 @@ export const DEFAULT_OUTLINE: OutlineSettings = {
 export interface CutoutOptions {
   mode: CutMode;
   faceIndex: number;
+  /** 多主体合并：只 union 这些脸的轮廓（长度 > 1 时生效） */
+  faceIndices?: number[];
   feather: number;
   expand: number;
   edgeSmooth: number;

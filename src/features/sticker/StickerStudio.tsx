@@ -40,6 +40,7 @@ import {
   storageUsage,
 } from "./repository";
 import { importStickers, pushVariantToAssets } from "./bridge";
+import { AssetPicker } from "./AssetPicker";
 import { AiStylePanel } from "./AiStylePanel";
 import { AiGeneratePanel } from "./AiGeneratePanel";
 import {
@@ -57,7 +58,7 @@ import {
   type StickerVariant,
 } from "./types";
 
-type PreviewTab = "result" | "source" | "mask";
+type PreviewTab = "result" | "source" | "mask" | "compare";
 type BrushMode = "erase" | "restore";
 
 interface AnalyzeState {
@@ -98,7 +99,10 @@ export function StickerStudio() {
   const [progress, setProgress] = useState<ProcessProgress | null>(null);
 
   const [mode, setMode] = useState<CutMode>("head");
-  const [faceIndex, setFaceIndex] = useState(0);
+  const [faceIndex] = useState(0);
+  // 勾选的主体；长度 > 1 时合成一张多人贴纸
+  const [multiFaces, setMultiFaces] = useState<number[]>([]);
+  const [generating, setGenerating] = useState(false);
   const [feather, setFeather] = useState(DEFAULT_CUT_OPTIONS.feather);
   const [expand, setExpand] = useState(DEFAULT_CUT_OPTIONS.expand);
   const [edgeSmooth] = useState(DEFAULT_CUT_OPTIONS.edgeSmooth);
@@ -117,6 +121,16 @@ export function StickerStudio() {
   const [usage, setUsage] = useState<{ usage: number; quota: number }>({ usage: 0, quota: 0 });
   const [dragging, setDragging] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // 蒙版编辑历史：每笔一次快照，最多保留 20 步
+  const [undoStack, setUndoStack] = useState<Uint8ClampedArray[]>([]);
+  const [redoStack, setRedoStack] = useState<Uint8ClampedArray[]>([]);
+  const strokeStart = useRef<Uint8ClampedArray | null>(null);
+  // 预览缩放/平移
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [panMode, setPanMode] = useState(false);
+  const panStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
@@ -263,6 +277,7 @@ export function StickerStudio() {
           warnings: outcome.warnings,
         });
         setMasks(await listMasks(source.id));
+        // 多人图默认先选中第一张脸，避免一次生成所有人
       } catch (error) {
         setAnalyze((prev) => ({
           ...prev,
@@ -279,6 +294,93 @@ export function StickerStudio() {
     await runAnalysisFor(canvasSource, activeSource);
   }, [activeSource, canvasSource, runAnalysisFor]);
 
+  /* --------------------------------------------------------------- subjects */
+
+  const toggleFace = useCallback((index: number) => {
+    setMultiFaces((prev) =>
+      prev.includes(index)
+        ? prev.filter((i) => i !== index)
+        : [...prev, index].sort((a, b) => a - b),
+    );
+  }, []);
+
+  /**
+   * One sticker per detected face.
+   *
+   * Reuses the same compositor as the single-subject path (only `faceIndex`
+   * differs), so a group photo yields N independent PNGs without a second
+   * pipeline. Each result is saved as its own variant.
+   */
+  const generatePerSubject = useCallback(async () => {
+    if (!canvasSource || !effectiveAlpha || !activeSource || !analyze.maskId) {
+      toast("先完成识别再分别生成", "info");
+      return;
+    }
+    if (analyze.faces.length === 0) {
+      toast("这张图没检测到人脸，用「去背 / 整个人」即可", "info");
+      return;
+    }
+    setGenerating(true);
+    let made = 0;
+    try {
+      for (let index = 0; index < analyze.faces.length; index++) {
+        const outcome = compose({
+          source: canvasSource,
+          personAlpha: effectiveAlpha,
+          faces: analyze.faces,
+          mode,
+          faceIndex: index,
+          outline,
+          feather,
+          expand,
+          edgeSmooth,
+          personColor,
+          colorTint,
+        });
+        const finalCanvas = limitSize(outcome.canvas, maxSide);
+        const { blob, mime } = await encode(finalCanvas, "png");
+        const thumb = await thumbnail(finalCanvas, 320);
+        await putVariant({
+          sourceId: activeSource.id,
+          maskId: analyze.maskId,
+          kind: manualAlpha ? "manual-mask" : "local-cutout",
+          name: `${activeSource.name.replace(/\.[^.]+$/, "")} · 主体 ${index + 1}`,
+          width: finalCanvas.width,
+          height: finalCanvas.height,
+          mime,
+          outline,
+          mode,
+          warnings: outcome.warnings,
+          blob,
+          thumb,
+        });
+        made += 1;
+      }
+      await refresh();
+      toast(`已分别生成 ${made} 张贴纸`, "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "分别生成失败", "error");
+    } finally {
+      setGenerating(false);
+    }
+  }, [
+    activeSource,
+    analyze.faces,
+    analyze.maskId,
+    canvasSource,
+    colorTint,
+    edgeSmooth,
+    effectiveAlpha,
+    expand,
+    feather,
+    manualAlpha,
+    maxSide,
+    mode,
+    outline,
+    personColor,
+    refresh,
+  ]);
+
   /* ------------------------------------------------------------- composing */
 
   const recompute = useCallback(async () => {
@@ -289,7 +391,8 @@ export function StickerStudio() {
         personAlpha: effectiveAlpha,
         faces: analyze.faces,
         mode,
-        faceIndex,
+        faceIndex: multiFaces.length === 1 ? multiFaces[0]! : faceIndex,
+        faceIndices: multiFaces.length > 1 ? multiFaces : undefined,
         outline,
         feather,
         expand,
@@ -301,7 +404,7 @@ export function StickerStudio() {
     } catch (error) {
       toast(error instanceof Error ? error.message : "合成失败", "error");
     }
-  }, [analyze.faces, canvasSource, colorTint, effectiveAlpha, edgeSmooth, expand, faceIndex, feather, mode, outline, personColor]);
+  }, [analyze.faces, canvasSource, colorTint, effectiveAlpha, edgeSmooth, expand, faceIndex, feather, mode, multiFaces, outline, personColor]);
 
   useEffect(() => {
     void recompute();
@@ -319,6 +422,48 @@ export function StickerStudio() {
       canvas.height = Math.round((width / canvasSource.width) * canvasSource.height);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(canvasSource, 0, 0, canvas.width, canvas.height);
+      return;
+    }
+    if (preview === "compare" && canvasSource && result) {
+      /**
+       * Before/after on one canvas: original on the left, finished sticker on the
+       * right, with a divider. Same frames matter more than pixel-perfect scaling,
+       * so both sides are drawn into the same box.
+       */
+      const width = Math.min(760, Math.max(canvasSource.width, result.canvas.width));
+      const height = Math.round((width / Math.max(canvasSource.width, 1)) * canvasSource.height);
+      canvas.width = width;
+      canvas.height = height;
+      ctx.clearRect(0, 0, width, height);
+      const half = Math.floor(width / 2);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, half, height);
+      ctx.clip();
+      ctx.drawImage(canvasSource, 0, 0, width, height);
+      ctx.restore();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(half, 0, width - half, height);
+      ctx.clip();
+      const cell = 12;
+      for (let y = 0; y < height; y += cell) {
+        for (let x = half; x < width; x += cell) {
+          ctx.fillStyle = (x / cell + y / cell) % 2 === 0 ? "#1a1d26" : "#22262f";
+          ctx.fillRect(x, y, cell, cell);
+        }
+      }
+      const scale = Math.min(width / result.canvas.width, height / result.canvas.height);
+      const dw = result.canvas.width * scale;
+      const dh = result.canvas.height * scale;
+      ctx.drawImage(result.canvas, half + (width - half) / 2 - dw / 2, (height - dh) / 2, dw, dh);
+      ctx.restore();
+      ctx.strokeStyle = "#b6ff3c";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(half, 0);
+      ctx.lineTo(half, height);
+      ctx.stroke();
       return;
     }
     if (preview === "mask" && effectiveAlpha) {
@@ -362,6 +507,57 @@ export function StickerStudio() {
   }, [preview, canvasSource, result, effectiveAlpha]);
 
   /* ------------------------------------------------------------ mask paint */
+
+  const HISTORY_LIMIT = 20;
+
+  /**
+   * Push the pre-stroke mask onto the undo stack.
+   *
+   * Snapshots are taken once per stroke rather than per pointer-move, otherwise a
+   * single drag would fill the whole history with near-identical frames.
+   */
+  const beginStroke = useCallback(() => {
+    strokeStart.current = (manualAlpha ?? effectiveAlpha)?.slice() ?? null;
+  }, [effectiveAlpha, manualAlpha]);
+
+  const endStroke = useCallback(() => {
+    const snapshot = strokeStart.current;
+    strokeStart.current = null;
+    if (!snapshot || !manualAlpha) return;
+    // Nothing changed (e.g. a stray click) — don't record a no-op step.
+    let changed = false;
+    for (let i = 0; i < snapshot.length; i++) {
+      if (snapshot[i] !== manualAlpha[i]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+    setUndoStack((prev) => [...prev, snapshot].slice(-HISTORY_LIMIT));
+    setRedoStack([]);
+  }, [manualAlpha]);
+
+  const undoMask = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev.slice(0, -1);
+      const snapshot = prev[prev.length - 1]!;
+      setRedoStack((r) => [...r, (manualAlpha ?? snapshot).slice()].slice(-HISTORY_LIMIT));
+      setManualAlpha(snapshot);
+      return next;
+    });
+  }, [manualAlpha]);
+
+  const redoMask = useCallback(() => {
+    setRedoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev.slice(0, -1);
+      const snapshot = prev[prev.length - 1]!;
+      setUndoStack((u) => [...u, (manualAlpha ?? snapshot).slice()].slice(-HISTORY_LIMIT));
+      setManualAlpha(snapshot);
+      return next;
+    });
+  }, [manualAlpha]);
 
   const paintAt = useCallback(
     (clientX: number, clientY: number) => {
@@ -565,17 +761,19 @@ export function StickerStudio() {
 
 
   return (
-    <div className="flex h-full min-h-0 bg-ink text-paper">
+    <div className="flex h-full min-h-0 flex-col bg-ink text-paper lg:flex-row">
+      <AssetPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(file) => void loadFile(file)} />
       {/* sources */}
-      <aside className="flex w-[220px] shrink-0 flex-col border-r border-line bg-ink-2">
+      <aside className="hidden w-[220px] shrink-0 flex-col border-r border-line bg-ink-2 lg:flex">
         <div className="flex items-center gap-1 border-b border-line p-2">
           <div className="text-[11px] font-bold uppercase tracking-widest text-mute">本机素材</div>
           <IconButton
-            icon="plus"
-            label="导入图片"
+            icon="layers"
+            label="从素材库选择"
             className="ml-auto h-6 w-6"
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setPickerOpen(true)}
           />
+          <IconButton icon="plus" label="导入图片" className="h-6 w-6" onClick={() => fileRef.current?.click()} />
         </div>
         <input
           ref={fileRef}
@@ -658,7 +856,42 @@ export function StickerStudio() {
       </aside>
 
       {/* preview */}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Phones get the sources as a horizontal strip; the full rail returns at lg. */}
+        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line px-2 py-1.5 lg:hidden">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded border border-dashed border-line text-mute hover:text-paper"
+            aria-label="导入图片"
+          >
+            <Icon name="plus" size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded border border-line text-mute hover:text-paper"
+            aria-label="从素材库选择"
+          >
+            <Icon name="layers" size={12} />
+          </button>
+          {sourceList.map((source) => (
+            <button
+              key={source.id}
+              type="button"
+              onClick={() => void openSource(source)}
+              title={source.name}
+              className={cn(
+                "h-9 shrink-0 max-w-[120px] truncate rounded border px-2 text-[10px]",
+                activeSource?.id === source.id
+                  ? "border-neon/60 bg-neon/10 text-paper"
+                  : "border-line/60 bg-ink-3/40 text-mute",
+              )}
+            >
+              {source.name}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
           <div className="text-[12px] font-bold">{activeSource?.name ?? "贴纸工坊"}</div>
           {activeSource ? (
@@ -667,7 +900,7 @@ export function StickerStudio() {
             </span>
           ) : null}
           <div className="ml-auto flex items-center gap-1">
-            {(["result", "source", "mask"] as PreviewTab[]).map((tab) => (
+            {(["result", "source", "mask", "compare"] as PreviewTab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -677,7 +910,7 @@ export function StickerStudio() {
                   preview === tab ? "bg-neon text-ink" : "text-mute hover:text-paper",
                 )}
               >
-                {tab === "result" ? "结果" : tab === "source" ? "原图" : "蒙版"}
+                {tab === "result" ? "结果" : tab === "source" ? "原图" : tab === "mask" ? "蒙版" : "对比"}
               </button>
             ))}
           </div>
@@ -696,7 +929,7 @@ export function StickerStudio() {
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 place-items-center overflow-auto p-4">
+        <div className="grid min-h-[34dvh] flex-1 place-items-center overflow-auto p-2 sm:p-3 lg:min-h-0 lg:p-4">
           {!activeSource ? (
             <EmptyState
               icon="image"
@@ -709,30 +942,101 @@ export function StickerStudio() {
               }
             />
           ) : (
-            <canvas
-              ref={previewRef}
-              className={cn(
-                "max-h-full max-w-full rounded border border-line bg-ink-3",
-                preview === "mask" ? "cursor-crosshair" : "",
-              )}
+            <div
+              className={cn("max-h-full max-w-full", panMode ? "cursor-grab active:cursor-grabbing" : "")}
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: "center center",
+              }}
+              onWheel={(e) => {
+                // Wheel zooms the preview only; the page must not scroll while doing it.
+                if (!e.ctrlKey && !e.metaKey && zoom === 1) return;
+                e.preventDefault();
+                setZoom((z) => Math.min(4, Math.max(1, z + (e.deltaY < 0 ? 0.2 : -0.2))));
+              }}
               onPointerDown={(e) => {
-                if (preview !== "mask") return;
-                painting.current = true;
+                if (!panMode) return;
+                panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
                 e.currentTarget.setPointerCapture(e.pointerId);
-                paintAt(e.clientX, e.clientY);
               }}
               onPointerMove={(e) => {
-                if (preview !== "mask" || !painting.current) return;
-                paintAt(e.clientX, e.clientY);
+                const start = panStart.current;
+                if (!start) return;
+                setPan({ x: start.panX + (e.clientX - start.x), y: start.panY + (e.clientY - start.y) });
               }}
-              onPointerUp={(e) => {
-                painting.current = false;
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                  e.currentTarget.releasePointerCapture(e.pointerId);
-                }
+              onPointerUp={() => {
+                panStart.current = null;
               }}
-            />
+            >
+              <canvas
+                ref={previewRef}
+                className={cn(
+                  "max-h-full max-w-full rounded border border-line bg-ink-3",
+                  preview === "mask" && !panMode ? "cursor-crosshair" : "",
+                )}
+                onPointerDown={(e) => {
+                  if (preview !== "mask" || panMode) return;
+                  painting.current = true;
+                  beginStroke();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  paintAt(e.clientX, e.clientY);
+                }}
+                onPointerMove={(e) => {
+                  if (preview !== "mask" || !painting.current || panMode) return;
+                  paintAt(e.clientX, e.clientY);
+                }}
+                onPointerUp={(e) => {
+                  if (painting.current) endStroke();
+                  painting.current = false;
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+              />
+            </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-1.5 border-t border-line px-3 py-1 text-[10px] text-mute">
+          <span>缩放 {Math.round(zoom * 100)}%</span>
+          <button
+            type="button"
+            className="rounded border border-line px-1.5 py-0.5 hover:text-paper"
+            onClick={() => setZoom((z) => Math.min(4, z + 0.2))}
+          >
+            放大
+          </button>
+          <button
+            type="button"
+            className="rounded border border-line px-1.5 py-0.5 hover:text-paper"
+            onClick={() => setZoom((z) => Math.max(1, z - 0.2))}
+          >
+            缩小
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded border px-1.5 py-0.5",
+              panMode ? "border-neon/60 text-neon" : "border-line hover:text-paper",
+            )}
+            onClick={() => {
+              setPanMode((v) => !v);
+              panStart.current = null;
+            }}
+          >
+            拖动
+          </button>
+          <button
+            type="button"
+            className="ml-auto rounded border border-line px-1.5 py-0.5 hover:text-paper"
+            onClick={() => {
+              setZoom(1);
+              setPan({ x: 0, y: 0 });
+              setPanMode(false);
+            }}
+          >
+            适应
+          </button>
         </div>
 
         {result?.warnings.length ? (
@@ -797,7 +1101,7 @@ export function StickerStudio() {
       </main>
 
       {/* controls */}
-      <aside className="scroll-thin w-[280px] shrink-0 space-y-2 overflow-y-auto border-l border-line bg-ink-2 p-2.5">
+      <aside className="scroll-thin max-h-[46dvh] w-full shrink-0 space-y-2 overflow-y-auto border-t border-line bg-ink-2 p-2.5 lg:max-h-none lg:w-[280px] lg:border-l lg:border-t-0">
         <Field label="识别状态">
           <p className="text-[10px] leading-relaxed text-mute">{analyze.message}</p>
           {analyze.alpha ? (
@@ -830,18 +1134,47 @@ export function StickerStudio() {
 
         {analyze.faces.length > 1 ? (
           <Field label={`主体（${analyze.faces.length} 张脸）`}>
-            <Select
-              value={String(faceIndex)}
-              aria-label="主体选择"
-              onChange={(e) => setFaceIndex(Number(e.target.value))}
-              className="h-7 text-[11px]"
-            >
-              {analyze.faces.map((face, index) => (
-                <option key={index} value={index}>
-                  第 {index + 1} 张 · 置信度 {Math.round((face.score ?? 0) * 100)}%
-                </option>
-              ))}
-            </Select>
+            <div className="space-y-1">
+              {analyze.faces.map((face, index) => {
+                const checked = multiFaces.includes(index);
+                return (
+                  <label
+                    key={index}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded border px-1.5 py-1 text-[9.5px]",
+                      checked ? "border-neon/60 bg-neon/10 text-neon" : "border-line text-mute",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleFace(index)}
+                      className="h-3 w-3 accent-[#b6ff3c]"
+                      aria-label={`主体 ${index + 1}`}
+                    />
+                    第 {index + 1} 张
+                    <span className="ml-auto tabular-nums">
+                      {Math.round((face.score ?? 0) * 100)}%
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[9px] leading-relaxed text-mute">
+              勾一个 = 只做这个人；勾多个 = 合成一张多人贴纸。想每人一张，用下面的「分别生成」。
+            </p>
+            <div className="mt-1 flex gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                disabled={!result || generating}
+                onClick={() => void generatePerSubject()}
+              >
+                {generating ? <Spinner size={10} /> : null}
+                分别生成 {multiFaces.length || 1} 张
+              </Button>
+            </div>
           </Field>
         ) : null}
 
@@ -868,15 +1201,30 @@ export function StickerStudio() {
               />
               <span className="text-[9px] text-mute">px</span>
             </div>
-            <Switch
-              checked={outline.layers === 2}
-              onChange={(on) => setOutline((o) => ({ ...o, layers: on ? 2 : 1 }))}
-              label="双层描边"
-            />
-            {outline.layers === 2 ? (
+            <div>
+              <div className="mb-1 text-[9.5px] text-mute">描边层级</div>
+              <div className="grid grid-cols-3 gap-1">
+                {([1, 2, 3] as const).map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setOutline((o) => ({ ...o, layers: count }))}
+                    className={cn(
+                      "rounded border px-1 py-1 text-[9.5px]",
+                      outline.layers === count
+                        ? "border-neon/60 bg-neon/15 text-neon"
+                        : "border-line text-mute hover:text-paper",
+                    )}
+                  >
+                    {count === 1 ? "单层" : count === 2 ? "双层" : "三层"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {outline.layers >= 2 ? (
               <div className="flex items-center gap-1.5">
                 <ColorInput
-                  label="外层颜色"
+                  label="第二层颜色"
                   value={outline.secondColor}
                   onChange={(secondColor) => setOutline((o) => ({ ...o, secondColor }))}
                 />
@@ -885,9 +1233,29 @@ export function StickerStudio() {
                   min={0}
                   max={40}
                   value={outline.secondThickness}
-                  aria-label="外层描边粗细"
+                  aria-label="第二层描边粗细"
                   onChange={(e) =>
                     setOutline((o) => ({ ...o, secondThickness: Number(e.target.value) || 0 }))
+                  }
+                  className="h-7 w-14 rounded border border-line bg-ink px-1 text-[11px] tabular-nums"
+                />
+              </div>
+            ) : null}
+            {outline.layers === 3 ? (
+              <div className="flex items-center gap-1.5">
+                <ColorInput
+                  label="第三层颜色"
+                  value={outline.thirdColor}
+                  onChange={(thirdColor) => setOutline((o) => ({ ...o, thirdColor }))}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={40}
+                  value={outline.thirdThickness}
+                  aria-label="第三层描边粗细"
+                  onChange={(e) =>
+                    setOutline((o) => ({ ...o, thirdThickness: Number(e.target.value) || 0 }))
                   }
                   className="h-7 w-14 rounded border border-line bg-ink px-1 text-[11px] tabular-nums"
                 />
@@ -975,6 +1343,38 @@ export function StickerStudio() {
                 label={brushHardness.toFixed(2)}
                 onChange={setBrushHardness}
               />
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-1"
+                  disabled={undoStack.length === 0}
+                  onClick={() => undoMask()}
+                >
+                  撤销
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-1"
+                  disabled={redoStack.length === 0}
+                  onClick={() => redoMask()}
+                >
+                  重做
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => {
+                    setUndoStack([]);
+                    setRedoStack([]);
+                    setManualAlpha(null);
+                  }}
+                >
+                  重置
+                </Button>
+              </div>
               <div className="flex gap-1">
                 <Button
                   size="sm"

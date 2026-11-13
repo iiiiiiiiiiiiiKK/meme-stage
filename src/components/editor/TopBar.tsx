@@ -54,7 +54,7 @@ export function TopBar({
   };
 
   return (
-    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-ink px-2 sm:px-3">
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 overflow-x-clip border-b border-line bg-ink px-2 sm:gap-2 sm:px-3">
       <Link
         to="/"
         className="group flex shrink-0 items-center gap-2"
@@ -69,12 +69,12 @@ export function TopBar({
         </span>
       </Link>
 
-      <div className="mx-1 h-6 w-px bg-line sm:mx-2" />
+      <div className="mx-1 hidden h-6 w-px bg-line sm:block sm:mx-2" />
 
       <input
         value={title}
         onChange={(e) => useEditor.getState().mutate((draft) => void (draft.title = e.target.value), true, "title")}
-        className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1.5 font-display text-[15px] outline-none transition-colors hover:border-line focus:border-neon/50 focus:bg-ink-2 sm:text-[17px]"
+        className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-1.5 font-display text-[14px] outline-none transition-colors hover:border-line focus:border-neon/50 focus:bg-ink-2 sm:px-2 sm:text-[17px]"
         placeholder="给作品起个名字"
         aria-label="作品名称"
         maxLength={80}
@@ -92,7 +92,7 @@ export function TopBar({
         <span>{status.label}</span>
       </div>
 
-      <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
+      <div className="ml-auto flex min-w-0 items-center gap-0 sm:gap-1">
         <div className="hidden items-center gap-0.5 sm:flex">
           <IconButton
             icon="undo"
@@ -133,9 +133,8 @@ export function TopBar({
         </Button>
         <IconButton icon="play" label="预览" className="sm:hidden" onClick={onOpenPreview} />
 
-        <Button variant="primary" size="sm" icon="bolt" onClick={onOpenPublish}>
+        <Button variant="primary" size="sm" icon="bolt" onClick={onOpenPublish} className="px-2 sm:px-3">
           <span className="hidden sm:inline">发布</span>
-          <span className="sm:hidden">发布</span>
         </Button>
 
         <div className="relative" ref={menuRef}>
@@ -184,7 +183,7 @@ export function TopBar({
           rel="noreferrer noopener"
           title="作者 @0xkillcoin on X"
           aria-label="作者 X 主页"
-          className="ml-0.5 grid h-8 w-8 place-items-center rounded-md border border-line text-[15px] font-bold text-paper transition-colors hover:border-paper/40 hover:bg-white/5"
+          className="ml-0.5 grid h-7 w-7 place-items-center rounded-md border border-line text-[13px] font-bold text-paper transition-colors hover:border-paper/40 hover:bg-white/5 sm:h-8 sm:w-8 sm:text-[15px]"
         >
           𝕏
         </a>

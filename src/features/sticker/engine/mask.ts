@@ -157,6 +157,26 @@ export function erodeMask(
   return out;
 }
 
+/**
+ * Point-wise maximum of several masks.
+ *
+ * Used to combine per-face silhouettes into one sticker: each face is isolated on
+ * its own first (so a neighbour's body cannot leak in), then the results are
+ * unioned here. Pure array work, so it is unit-testable without a canvas.
+ */
+export function unionMasks(masks: Uint8ClampedArray[]): Uint8ClampedArray {
+  const usable = masks.filter((mask) => mask.length > 0);
+  if (usable.length === 0) return new Uint8ClampedArray(0);
+  if (usable.length === 1) return usable[0]!.slice();
+  const out = new Uint8ClampedArray(usable[0]!.length);
+  for (const mask of usable) {
+    const limit = Math.min(out.length, mask.length);
+    for (let i = 0; i < limit; i++) {
+      if (mask[i]! > out[i]!) out[i] = mask[i]!;
+    }
+  }
+  return out;
+}
 export function multiplyMasks(a: Uint8ClampedArray, b: Uint8ClampedArray): Uint8ClampedArray {
   const out = new Uint8ClampedArray(a.length);
   for (let i = 0; i < a.length; i++) out[i] = (a[i] * b[i]) / 255;

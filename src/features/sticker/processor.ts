@@ -47,6 +47,8 @@ export interface ComposeInput {
   faces: FaceDetection[];
   mode: CutMode;
   faceIndex: number;
+  /** 多主体合并：只 union 这些脸（长度 > 1 生效） */
+  faceIndices?: number[];
   outline: OutlineSettings;
   feather?: number;
   expand?: number;
@@ -152,6 +154,7 @@ export function compose(input: ComposeInput): ComposeOutcome {
     options: {
       mode: input.mode,
       faceIndex: input.faceIndex,
+      faceIndices: input.faceIndices,
       feather: input.feather ?? 0.6,
       expand: input.expand ?? 0,
       edgeSmooth: input.edgeSmooth ?? 0.4,

@@ -37,9 +37,18 @@ export function computeStrokeLayers(
   const layers: StrokeLayer[] = [];
   const thickness = Math.max(0, settings.thickness);
   const secondThickness = Math.max(0, settings.secondThickness);
+  const thirdThickness = Math.max(0, settings.thirdThickness ?? 0);
 
-  // Outer silhouette (largest) painted first.
-  if (settings.layers === 2 && secondThickness > 0) {
+  /**
+   * Outermost silhouette is painted first, each later layer sits on top of it.
+   * Support for three layers keeps the same rule as two: the stack grows outward
+   * by adding thicknesses, so a 3-layer sticker reads as white → black → accent.
+   */
+  if (settings.layers === 3 && thirdThickness > 0) {
+    const grown = dilateMask(alpha, width, height, thickness + secondThickness + thirdThickness, 1.4);
+    layers.push({ color: settings.thirdColor ?? '#ffffff', alpha: grown, inner: false });
+  }
+  if ((settings.layers === 2 || settings.layers === 3) && secondThickness > 0) {
     const grown = dilateMask(alpha, width, height, thickness + secondThickness, 1.4);
     layers.push({ color: settings.secondColor, alpha: grown, inner: false });
   }
@@ -99,7 +108,9 @@ export function renderOutlined(
   // the strokes themselves, the glow blur radius, and the shadow blur plus its
   // downward offset.
   const strokeSpread = Math.max(
-    settings.thickness + (settings.layers === 2 ? settings.secondThickness : 0),
+    settings.thickness +
+      (settings.layers >= 2 ? settings.secondThickness : 0) +
+      (settings.layers === 3 ? Math.max(0, settings.thirdThickness ?? 0) : 0),
     settings.inner,
   );
   const glowSpread = settings.enabled && settings.glow ? settings.thickness + 4 + 2 : 0;

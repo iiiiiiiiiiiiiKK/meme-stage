@@ -1,0 +1,1 @@
+for (const u of ['http://localhost:4517/','http://[::1]:4517/']) { try { const r = await fetch(u); const t = await r.text(); console.log(u, r.status, (t.match(/<title>[^<]*/)||[''])[0], (t.match(/assets\/index-[^"]+/)||[''])[0]); } catch(e){ console.log(u,'ERR',e.cause?.code||e.message); } }
